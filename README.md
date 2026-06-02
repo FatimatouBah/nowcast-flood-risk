@@ -52,3 +52,5 @@ pip install -r requirements.txt
 ## Équipe
 
 Projet réalisé dans le cadre du Mastère Architecte IA — Jedha Bootcamp
+
+Test modification Git
