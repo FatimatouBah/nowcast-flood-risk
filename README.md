@@ -1,5 +1,7 @@
 # nowcast-flood-risk
-Système de nowcast du risque d'inondation par ML
+
+**Système de nowcast du risque d'inondation par ML**
+
 # Nowcast Risque d'Inondation 🌊
 
 Système de prédiction en quasi-temps réel du risque d'inondation
@@ -30,12 +32,12 @@ opérationnelle et déployable sans infrastructure lourde.
 
 ## Sources de données
 
-| Source | Contenu |
-|--------|---------|
-| CHIRPS (UCSB) | Précipitations quotidiennes |
-| SRTM (NASA) | Modèle numérique de terrain 30m |
-| Copernicus Land Cover | Occupation des sols |
-| BDHI (data.gouv.fr) | Historique des inondations France |
+| Source                | Contenu                           |
+| --------------------- | --------------------------------- |
+| CHIRPS (UCSB)         | Précipitations quotidiennes      |
+| SRTM (NASA)           | Modèle numérique de terrain 30m |
+| Copernicus Land Cover | Occupation des sols               |
+| BDHI (data.gouv.fr)   | Historique des inondations France |
 
 ---
 
