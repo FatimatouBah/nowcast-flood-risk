@@ -28,6 +28,3 @@ def fetch_hauteurs_ill(code_station='A161003001', size=1000):
     print("Données sauvegardées dans data/hubeau/ill_colmar_hauteurs.csv")
     
     return df
-
-if __name__ == '__main__':
-    df = fetch_hauteurs_ill()

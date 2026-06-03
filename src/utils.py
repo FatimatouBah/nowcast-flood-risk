@@ -10,7 +10,7 @@ from urllib.parse import urlparse, parse_qs
 
 def request_json_data(url, params, timeout=60): # return requested json data or raise exception
     """
-    Effectue une requête GET et retourne le JSON.
+    Execute HTTP GET request and return data as JSON or raise an exception.
     """
     r = requests.get(url, params=params, timeout=timeout, headers={"Accept": "application/json"})
     r.raise_for_status()
@@ -55,9 +55,9 @@ def request_with_pagination(url, params, pages_delay_in_seconds=0.3): # return l
 
     return results
 
-def save_dataframe_as_csv(df, nom, type_donnee, output_dir, verbose=False):  # return the filepath
+def save_dataframe_as_csv(df, nom, type_donnee, output_dir, verbose=False) -> str:
     """
-    Sauvegarder un DataFrame en CSV.
+    Save pandas dataframe as csv file. Return the file's path.
     """
     if df is None or df.empty:
         return None

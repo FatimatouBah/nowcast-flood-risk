@@ -1,3 +1,7 @@
+"""
+Hubeau's API client for hydrometric data retrieval.
+"""
+
 import os
 import time
 import pandas
@@ -12,13 +16,10 @@ from utils import request_json_data, request_with_pagination
 HUBEAU_BASE_URL = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
 
 # ============================================================
-#  UTILITAIRES
+#  Recherche des codes de stations
 # ============================================================
 
-# ============================================================
-#  ÉTAPE 1 : Recherche des codes de stations
-# ============================================================
-
+# TODO : tester
 def request_stations(names): # return stations' data in a dictionary
     """
     Recherche les codes hydrométriques des stations par leur nom.
@@ -60,63 +61,10 @@ def request_stations(names): # return stations' data in a dictionary
     return resultats
 
 # ============================================================
-#  ÉTAPE 2a : Observations horaires (grandeur H, temps réel)
+#  Débits moyens journaliers (obs_elab — historique complet)
 # ============================================================
 
-def download_hourly_water_heights(code_station, nom, date_debut, date_fin):
-    """
-    Télécharge les hauteurs d'eau horaires via /observations_tr.
-    Les données sont brutes (statut temps réel).
-    Les données "vérifiées" ne sont accessibles que via l'interface web.
-
-    Retourne un DataFrame pandas avec colonnes : datetime, hauteur_m
-    """
-    print(f"\n  Hauteurs horaires : {nom} ({code_station})")
-    print(f"  Période : {date_debut} → {date_fin}")
-
-    url = f"{HUBEAU_BASE_URL}/observations_tr"
-    params = {
-        "code_entite":    code_station,
-        "date_debut_obs": date_debut + "T00:00:00Z",
-        "date_fin_obs":   date_fin   + "T23:59:59Z",
-        "grandeur_hydro": "H",
-        "format":         "json",
-        "size":           20000,
-        "timestep":       60,        # pas de temps 60 minutes
-    }
-
-    observations = paginer(url, params)
-
-    if not observations:
-        print(f"  ⚠ Aucune donnée retournée")
-        return None
-
-    df = pandas.DataFrame(observations)
-
-    # Colonnes standardisées
-    rename = {
-        "date_obs":       "datetime",
-        "resultat_obs":   "hauteur_mm",   # en mm !
-        "code_statut":    "statut",
-        "code_qualification": "qualification",
-        "code_methode":   "methode",
-    }
-    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
-
-    if "datetime" in df.columns:
-        df["datetime"] = pandas.to_datetime(df["datetime"], utc=True)
-    if "hauteur_mm" in df.columns:
-        df["hauteur_m"] = pandas.to_numeric(df["hauteur_mm"], errors="coerce") / 1000
-        df = df.drop(columns=["hauteur_mm"], errors="ignore")
-
-    df = df.sort_values("datetime")
-    print(f"  ✓ {len(df)} observations récupérées")
-    return df
-
-# ============================================================
-#  ÉTAPE 2b : Débits moyens journaliers (obs_elab — historique complet)
-# ============================================================
-
+# TODO : tester
 def download_daily_flow_rates(code_station, nom, date_debut, date_fin):
     """
     Télécharge les débits moyens journaliers via /obs_elab.
@@ -159,16 +107,57 @@ def download_daily_flow_rates(code_station, nom, date_debut, date_fin):
     return df
 
 # ============================================================
-#  ÉTAPE 3 : Sauvegarde
+#  Observations horaires (grandeur H, temps réel)
 # ============================================================
 
-def save_dataframe_as_csv(df, nom, type_donnee, output_dir):
-    """Sauvegarde un DataFrame en CSV."""
-    if df is None or df.empty:
+# TODO : tester
+def download_hourly_water_heights(code_station, nom, date_debut, date_fin):
+    """
+    Télécharge les hauteurs d'eau horaires via /observations_tr.
+    Les données sont brutes (statut temps réel).
+    Les données "vérifiées" ne sont accessibles que via l'interface web.
+
+    Retourne un DataFrame pandas avec colonnes : datetime, hauteur_m
+    """
+    print(f"\n  Hauteurs horaires : {nom} ({code_station})")
+    print(f"  Période : {date_debut} → {date_fin}")
+
+    url = f"{HUBEAU_BASE_URL}/observations_tr"
+    params = {
+        "code_entite":    code_station,
+        "date_debut_obs": date_debut + "T00:00:00Z",
+        "date_fin_obs":   date_fin   + "T23:59:59Z",
+        "grandeur_hydro": "H",
+        "format":         "json",
+        "size":           20000,
+        "timestep":       60,        # pas de temps 60 minutes
+    }
+
+    observations = request_with_pagination(url, params)
+
+    if not observations:
+        print(f"  ⚠ Aucune donnée retournée")
         return None
-    os.makedirs(output_dir, exist_ok=True)
-    chemin = os.path.join(output_dir, f"{nom}_{type_donnee}.csv")
-    df.to_csv(chemin, index=False, encoding="utf-8")
-    taille = os.path.getsize(chemin) / 1024
-    print(f"  💾 Sauvegardé : {chemin} ({len(df)} lignes, {taille:.0f} Ko)")
-    return chemin
+
+    df = pandas.DataFrame(observations)
+
+    # Colonnes standardisées
+    rename = {
+        "date_obs":       "datetime",
+        "resultat_obs":   "hauteur_mm",   # en mm !
+        "code_statut":    "statut",
+        "code_qualification": "qualification",
+        "code_methode":   "methode",
+    }
+
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+
+    if "datetime" in df.columns:
+        df["datetime"] = pandas.to_datetime(df["datetime"], utc=True)
+    if "hauteur_mm" in df.columns:
+        df["hauteur_m"] = pandas.to_numeric(df["hauteur_mm"], errors="coerce") / 1000
+        df = df.drop(columns=["hauteur_mm"], errors="ignore")
+
+    df = df.sort_values("datetime")
+    print(f"  ✓ {len(df)} observations récupérées")
+    return df
