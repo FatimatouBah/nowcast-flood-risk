@@ -8,7 +8,7 @@ from urllib.parse import urlparse, parse_qs
 #  UTILITAIRES
 # ============================================================
 
-def request_json(url, params, timeout=60): # return requested json data or raise exception
+def request_json(url, params=None, timeout=60): # return requested json data or raise exception
     """
     Execute the given API point as HTTP GET request with requested JSON output and return JSON output data or raise an exception.
     """
