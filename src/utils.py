@@ -12,12 +12,13 @@ def request_json(url, params, timeout=60): # return requested json data or raise
     """
     Execute the given API point as HTTP GET request with requested JSON output and return JSON output data or raise an exception.
     """
-    r = requests.get(url, params=params, timeout=timeout, headers={"Accept": "application/json"})
-    r.raise_for_status()
-    output = r.json()  # content as json object (dictionary)
+    headers = {"User-Agent": "jedha-dsfsft41-team3-ml-flood-forecasting-app", "Accept": "application/json"}
+    response = requests.get(url, params=params, timeout=timeout, headers=headers)
+    response.raise_for_status()
+    output = response.json()  # content as json object (dictionary)
     return output
 
-def request_json_all(url, params, next_pages_delay_in_seconds = 0.3, timeout_per_page = 60, verbose = False): 
+def request_json_all(url, params, next_page_delay_in_seconds = 0.1, page_timeout_in_seconds = 60, verbose = False): 
     """
     Parcourt toutes les pages d'un endpoint paginé u.
     Retourne la liste complète des résultats.
@@ -41,7 +42,7 @@ def request_json_all(url, params, next_pages_delay_in_seconds = 0.3, timeout_per
         if cursor:
             pp["cursor"] = cursor
 
-        json_page = request_json(url, params=pp, timeout=timeout_per_page)
+        json_page = request_json(url, params=pp, timeout=page_timeout_in_seconds)
         if json_page:
             assert(isinstance(json_page, dict))
             assert(all(key in json_page for key in ("api_version", "count", "data", "next")))
@@ -76,8 +77,8 @@ def request_json_all(url, params, next_pages_delay_in_seconds = 0.3, timeout_per
                     page_number += 1
 
                      # respecter les limites de l'API (0.3s ~> 10 req/s) 
-                    if next_pages_delay_in_seconds > 0:
-                        time.sleep(next_pages_delay_in_seconds)      
+                    if next_page_delay_in_seconds > 0:
+                        time.sleep(next_page_delay_in_seconds)      
 
     return {"api_version": api_version, "count": count, "data": data}
 
@@ -87,6 +88,7 @@ def save_dataframe_as_csv(df, base_name, output_dirpath, verbose=False) -> str:
     """
     if df is None or df.empty:
         return None
+    
     os.makedirs(output_dirpath, exist_ok=True)
     filepath = os.path.join(output_dirpath, f"{base_name}.csv")
     _ = df.to_csv(filepath, index=False, encoding="utf-8")

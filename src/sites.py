@@ -10,7 +10,7 @@ SITES = {
         "river": "ill",
         "region": "grand-est",
 		"stations": [
-			{"code": "A236003001", "municipality" :"Kogenheim"}
+			{"code": "A236003001", "municipality" :"kogenheim"}
 		]
 	},
     "Colmar-1":     {
@@ -19,7 +19,7 @@ SITES = {
         "river": "launch",
         "region": "grand-est",
 		"stations": [
-            {"code": "A158020101", "municipality" :"Colmar"}, 
+            {"code": "A158020101", "municipality" :"colmar"}, 
         ]
 	},
     "Colmar-2":     {
@@ -28,7 +28,7 @@ SITES = {
         "river": "ill",
         "region": "grand-est",
 		"stations": [
-            {"code": "A161003001", "municipality" :"Colmar"}, 
+            {"code": "A161003001", "municipality" :"colmar"}, 
         ]
 	},
     "Colmar-3":     {
@@ -37,7 +37,7 @@ SITES = {
         "river": "fetch",
         "region": "grand-est",
 		"stations": [
-            {"code": "A222000101", "municipality" :"Colmar"}, 
+            {"code": "A222000101", "municipality" :"colmar"}, 
         ]
 	},
     "Selestat":   {
@@ -46,9 +46,9 @@ SITES = {
         "river": "giessen",
         "region": "grand-est",
 		"stations": [
-			{"code": "A235020001", "municipality" :"Selestat"},
-			{"code": "A235020002", "municipality" :"Selestat"},
-			{"code": "A235020003", "municipality" :"Selestat"}
+			{"code": "A235020001", "municipality" :"selestat"},
+			{"code": "A235020002", "municipality" :"selestat"},
+			{"code": "A235020003", "municipality" :"selestat"}
 		], 
 	},
     "Ostheim":    {
@@ -57,7 +57,7 @@ SITES = {
         "river": "fetch",
         "region": "grand-est",
 		"stations": [
-			{"code": "A214010001", "municipality" :"Ostheim"}
+			{"code": "A214010001", "municipality" :"ostheim"}
 		],
 	},
 
@@ -69,7 +69,7 @@ SITES = {
         "river": "zorn",
         "region": "grand-est",
 		"stations": [
-			{"code": "A348020001", "municipality" :"Waltenheim-sur-Zorm"}
+			{"code": "A348020001", "municipality" :"waltenheim-sur-zorn"}
 		], 
 	},
     "Oberhof":    {
@@ -78,7 +78,7 @@ SITES = {
         "river": "zinsel-sud",
         "region": "grand-est",
 		"stations": [
-			{"code": "A343021001", "municipality" :"Eckartswiller"}
+			{"code": "A343021001", "municipality" :"eckartswiller"}
 		], 
 	},
     "Saverne":    { 
@@ -87,7 +87,7 @@ SITES = {
         "river": "zorn",
         "region": "grand-est",
 		"stations": [
-			{"code": "A341020001", "municipality" :"Saverne"}
+			{"code": "A341020001", "municipality" :"saverne"}
 		]
 	},
 }
