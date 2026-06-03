@@ -1,0 +1,104 @@
+# Sites de mesures hydrométries pour l'entraînement du modèle de prévision de risque d'inondation
+
+SITES = {
+    
+    # Site principal (Kogenheim)
+    
+    "Kogenheim":  {
+        "code" : "A2360030",
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "ill",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A236003001", "municipality" :"Kogenheim"}
+		]
+	},
+    "Colmar-1":     {
+        "code" : "A1580201", 
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "launch",
+        "region": "grand-est",
+		"stations": [
+            {"code": "A158020101", "municipality" :"Colmar"}, 
+        ]
+	},
+    "Colmar-2":     {
+        "code" : "A1610030", 
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "ill",
+        "region": "grand-est",
+		"stations": [
+            {"code": "A161003001", "municipality" :"Colmar"}, 
+        ]
+	},
+    "Colmar-3":     {
+        "code" : "A2220001", 
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "fetch",
+        "region": "grand-est",
+		"stations": [
+            {"code": "A222000101", "municipality" :"Colmar"}, 
+        ]
+	},
+    "Selestat":   {
+        "code" : "A2350200",
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "giessen",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A235020001", "municipality" :"Selestat"},
+			{"code": "A235020002", "municipality" :"Selestat"},
+			{"code": "A235020003", "municipality" :"Selestat"}
+		], 
+	},
+    "Ostheim":    {
+        "code" : "A2140100",
+        "site": "main",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "fetch",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A214010001", "municipality" :"Ostheim"}
+		],
+	},
+
+    # Site secondaire (Waltenheim)
+    
+    "Waltenheim": {
+        "code" : "A3480200",
+        "site": "secondary",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "zorn",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A348020001", "municipality" :"Waltenheim-sur-Zorm"}
+		], 
+		"time": ("2007-01-01", "2019-12-31"), "site": "secondaire"
+	},
+    "Oberhof":    {
+        "code" : "A3430210",
+        "site": "secondary",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "zinsel-sud",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A343021001", "municipality" :"Eckartswiller"}
+		], 
+		"time": ("2007-01-01", "2019-12-31"), "site": "secondaire"
+	},
+    "Saverne":    { 
+        "code" : "A3410200",
+        "site": "secondary",
+		"time": ("2007-01-01", "2022-12-31"), 
+        "river": "zorn",
+        "region": "grand-est",
+		"stations": [
+			{"code": "A341020001", "municipality" :"Saverne"}
+		]
+	},
+}
