@@ -1,0 +1,4 @@
+code_site,code_station,date_obs_elab,resultat_obs_elab,date_prod,code_statut,libelle_statut,code_methode,libelle_methode,code_qualification,libelle_qualification,longitude,latitude,grandeur_hydro_elab
+A2350200,A235020002,2007-01-01,29.0,2026-06-01T11:23:39Z,12,Donnée pré-validée,10,Expertisée,20,Bonne,7.456646587,48.27284149,QINnJ
+A2350200,A235020002,2007-01-02,126.0,2026-06-01T11:23:39Z,12,Donnée pré-validée,10,Expertisée,20,Bonne,7.456646587,48.27284149,QINnJ
+A2350200,A235020002,2007-01-03,1131.0,2026-06-01T11:23:39Z,12,Donnée pré-validée,10,Expertisée,20,Bonne,7.456646587,48.27284149,QINnJ
