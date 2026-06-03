@@ -26,4 +26,3 @@ Nowcast flood risk project
     - éventuellement, ajouter évènements crues, etc.
 - baseline de prediction entrainé (linear regression) + métriques d'évaluation
     - eventuellement, modeles rf, gb, xgb + métriques d'évaluation + comparaison des modèles
-
