@@ -8,9 +8,7 @@ Système de prédiction en quasi-temps réel du risque d'inondation
 à l'échelle d'un bassin versant, combinant données pluviométriques,
 topographiques et d'occupation des sols.
 
-**Zone d'étude** : Loire moyenne (Tours / Blois)
-**Période** : 2000 – 2023
-
+**Zone d'étude** : Bassin de l'Ill — Grand Est (Alsace)
 ---
 
 ## Problématique
