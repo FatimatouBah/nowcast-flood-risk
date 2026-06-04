@@ -18,13 +18,11 @@ def request_json(url, params=None, timeout=60): # return requested json data or 
     output = response.json()  # content as json object (dictionary)
     return output
 
-def request_json_all(url, params, next_page_delay_in_seconds = 0.1, page_timeout_in_seconds = 60, verbose = False): 
+def request_json_all(url, params=None, next_page_delay_in_seconds=0.1, page_timeout_in_seconds=60, verbose=False): 
     """
     Parcourt toutes les pages d'un endpoint paginé u.
     Retourne la liste complète des résultats.
     """
-
-    assert(isinstance(params, dict))
 
     api_version = None
     count = None
@@ -38,7 +36,7 @@ def request_json_all(url, params, next_page_delay_in_seconds = 0.1, page_timeout
     while not done:
         done = True
 
-        pp = dict(**params)
+        pp = dict(**params) if isinstance(params, dict) else dict()
         if cursor:
             pp["cursor"] = cursor
 
