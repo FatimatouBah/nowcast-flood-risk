@@ -2,18 +2,10 @@
 Hubeau's API client for hydrometric data retrieval.
 """
 
-import os
-import time
 import pandas
-import requests
 
-from utils import request_json_data, request_with_pagination    
-
-# ============================================================
-#  APIS
-# ============================================================
-
-HUBEAU_BASE_URL = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
+from config import HUBEAU_BASE_URL
+from utils import request_json_all    
 
 # ============================================================
 #  Recherche des codes de stations
@@ -40,7 +32,7 @@ def request_stations(names, verbose = False): # return stations' data in a dicti
             "format": "json",
             "size": 10,
         }
-        data = request_json_data(url, params)
+        data = request_json_all(url, params)
         if data and data.get("data"):
             for s in data["data"]:
                 print(f"    → {s['code_station']:15s} | "
@@ -86,7 +78,7 @@ def download_daily_flow_rates(code_station, nom, date_debut, date_fin):
         "size":                 20000,
     }
 
-    observations = paginer(url, params)
+    observations = request_json_all(url, params)
 
     if not observations:
         print(f"  ⚠ Aucune donnée retournée")
@@ -135,7 +127,7 @@ def download_hourly_water_heights(code_station, nom, date_debut, date_fin):
         "timestep":       60,        # pas de temps 60 minutes
     }
 
-    observations = request_with_pagination(url, params)
+    observations = request_json_all(url, params)
 
     if not observations:
         print(f"  ⚠ Aucune donnée retournée")
