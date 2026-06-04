@@ -1,0 +1,23 @@
+artifact_path: file:C:/Users/bahfa/Downloads/Nowcast/nowcast-flood-risk/mlruns/1/models/m-1e90cbb813f445e9afb12a10b529f5ed/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.14.2
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.13.0
+model_id: m-1e90cbb813f445e9afb12a10b529f5ed
+model_size_bytes: 1327987
+model_uuid: m-1e90cbb813f445e9afb12a10b529f5ed
+prompts: null
+run_id: 754b1f3c9fdd4d64b2c48eebe107385a
+utc_time_created: '2026-06-04 12:25:50.904010'
