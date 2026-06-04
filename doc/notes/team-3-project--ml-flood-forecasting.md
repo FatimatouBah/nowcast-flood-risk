@@ -26,15 +26,16 @@ Jedha DSFSFT41 Team 3 Project
 ## 1. Problématique
 
 [...] 
-[voir [ML4FF1] et [ML4FF2]]
+[voir introduction de [ML4FF1] et [ML4FF2]]
 
-###### Produit livré
-[...]
+###### Livrable
+[...] [un système de nowcast du risque d'inondation qui combine précipitations récentes et prévues (CHIRPS), modèle numérique de terrain (SRTM), occupation des sols et historiques d'événements pour classifier le risque par cellule géographique, avec une interface cartographique et un curseur temporel.]
 
 ###### Impact attendu
 [...]
 
-## 2. Spécifications des livrables
+## 2. Contour du livrable
+
 - notebooks d'exploration et d'analyse des données
 - pipeline d'entrainemnt mlflow
 - pipeline de mise en production huggingface
