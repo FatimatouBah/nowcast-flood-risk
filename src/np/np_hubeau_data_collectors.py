@@ -20,14 +20,16 @@ HUBEAU_BASE_URL = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
 # ============================================================
 
 # TODO : tester
-def request_stations(names): # return stations' data in a dictionary
+def request_stations(names, verbose = False): # return stations' data in a dictionary
     """
     Recherche les codes hydrométriques des stations par leur nom.
     Retourne un dict {nom: {code, libelle, cours_eau, ...}}
     """
-    print("\n" + "="*60)
-    print("ÉTAPE 1 — Recherche des codes de stations")
-    print("="*60)
+    if verbose:
+        print()
+        print("="*60)
+        print("Recherche des codes de stations")
+        print("="*60)
 
     resultats = {}
     for name in names:
