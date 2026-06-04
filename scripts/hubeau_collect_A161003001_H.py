@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 STATIONS = [
     'A161003001',
-    'A214010001', 
+    'A214010001',
     'A222000101',
     'A235020001',
     'A236003001',
@@ -14,51 +14,29 @@ STATIONS = [
     'A348020001'
 ]
 
-def fetch_station_chunk(station_code, grandeur, date_debut, date_fin):
+OUTPUT_DIR = 'src/fb/hubeau'
+
+def fetch_water_levels(station_code, grandeur='H'):
     url = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr'
     all_data = []
     cursor = None
 
     while True:
-        params = {
-            'code_entite': station_code,
-            'grandeur_hydro': grandeur,
-            'date_debut_obs': date_debut,
-            'date_fin_obs': date_fin,
-            'size': 500
-        }
+        params = {'code_entite': station_code, 'grandeur_hydro': grandeur, 'size': 1000}
         if cursor:
             params['cursor'] = cursor
-
         r = requests.get(url, params=params)
         if r.status_code not in [200, 206]:
-            return []
-
+            print(f"No data — {station_code} {grandeur}")
+            return None
         data = r.json()
         if not data.get('data'):
             break
-
         all_data.extend(data['data'])
         next_url = data.get('next')
         if not next_url or len(all_data) >= data['count']:
             break
         cursor = next_url.split('cursor=')[1].split('&')[0]
-
-    return all_data
-
-def fetch_water_levels(station_code, grandeur='H'):
-    all_data = []
-    start = datetime(2024, 1, 1)
-    end = datetime.today()
-    current = start
-
-    while current < end:
-        next_month = current + timedelta(days=30)
-        date_debut = current.strftime('%Y-%m-%d')
-        date_fin = min(next_month, end).strftime('%Y-%m-%d')
-        chunk = fetch_station_chunk(station_code, grandeur, date_debut, date_fin)
-        all_data.extend(chunk)
-        current = next_month
 
     if not all_data:
         print(f"No data — {station_code} {grandeur}")
@@ -72,8 +50,8 @@ def fetch_water_levels(station_code, grandeur='H'):
     date_debut_str = df['date_obs'].min().strftime('%Y%m%d')
     date_fin_str = df['date_obs'].max().strftime('%Y%m%d')
 
-    os.makedirs('data/hubeau', exist_ok=True)
-    output = f'data/hubeau/hubeau_obstr_{station_code}_{grandeur}_{date_fin_str}_{date_debut_str}.csv'
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    output = f'{OUTPUT_DIR}/hubeau_obstr_{station_code}_{grandeur}_{date_fin_str}_{date_debut_str}.csv'
     df.to_csv(output, index=False)
     print(f"Saved {len(df)} rows to {output}")
     return df
