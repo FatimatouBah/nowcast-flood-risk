@@ -220,3 +220,4 @@ __marimo__/
 .~lock.*
 *.orig
 *.bak
+/pyproject.toml
