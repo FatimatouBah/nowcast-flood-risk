@@ -7,40 +7,38 @@ from urllib.parse import urlparse, parse_qs
 #  UTILITAIRES
 # ============================================================
 
-def request_json(url, params=None, timeout=60): # return requested json data or raise exception
+def request_json(url, params=None, timeout_in_seconds=60): # return requested json data + elapsed time in seconds or raise exception
     """
     Execute the given API point as HTTP GET request with requested JSON output and return JSON output data or raise an exception.
     """
     headers = {"User-Agent": "jedha-dsfsft41-team3-ml-flood-forecasting-app", "Accept": "application/json"}
-    response = requests.get(url, params=params, timeout=timeout, headers=headers)
+    response = requests.get(url, params=params, timeout=timeout_in_seconds, headers=headers)
     response.raise_for_status()
     output = response.json()  # content as json object (dictionary)
-    return output
+    return output, response.elapsed.total_seconds()
 
-def request_json_all(url, params=None, next_page_delay_in_seconds=0.1, page_timeout_in_seconds=60, verbose=False): 
+def request_json_all(url, params=None, requests_per_second=10, timeout_in_seconds=60, verbose=True): 
     """
-    Parcourt toutes les pages d'un endpoint paginé u.
-    Retourne la liste complète des résultats.
+    Traverse all pages of the paginated endpoint and return a distionary containing the list of collected JSON output data.
     """
 
     api_version = None
     count = None
     data = []
-    
-    cursor = None
-    page_number = 1
-    total_records = 0
 
-    done = False  # break if cursor is None or if no more results
-    while not done:
-        done = True
+    duration_in_seconds = 0
 
-        pp = dict(**params) if isinstance(params, dict) else dict()
-        if cursor:
-            pp["cursor"] = cursor
+    rate = 0
+    pages = 0
+    next_url = url
+    complete = False
+    while not complete:
+        complete = True
 
-        json_page = request_json(url, params=pp, timeout=page_timeout_in_seconds)
+        json_page, elapsed_in_seconds = request_json(next_url, params=params, timeout_in_seconds=timeout_in_seconds)
         if json_page:
+            duration_in_seconds += elapsed_in_seconds  # elasped time is usually betwenn 250 and 750 ms.
+
             assert(isinstance(json_page, dict))
             assert(all(key in json_page for key in ("api_version", "count", "data", "next")))
 
@@ -58,24 +56,19 @@ def request_json_all(url, params=None, next_page_delay_in_seconds=0.1, page_time
             data.extend(page_data)
 
             # info:
-            local_records = len(page_data)
-            total_records += local_records
+            pages += 1
+            rate = pages / duration_in_seconds
             if verbose:
-                print(f">>> page {page_number} -> {local_records} enregistrements / {total_records}")
+                print(f">>> page {pages:03}: {len(page_data)} records / {page_count} at rate {rate} requests / second")
 
             next_url = json_page.get("next")
             if next_url:
-                qs = parse_qs(urlparse(next_url).query)
-                cursor = qs.get("cursor", [None])[0]
-                if cursor:
-                    done = False  # continue with next page
-
-                    # info:
-                    page_number += 1
-
-                     # respecter les limites de l'API (0.3s ~> 10 req/s) 
-                    if next_page_delay_in_seconds > 0:
-                        time.sleep(next_page_delay_in_seconds)      
+                complete = False
+                
+                # respecter les limites de l'API
+                if requests_per_second > 0:
+                    if rate > requests_per_second:
+                        time.sleep(0.3) # slow down
 
     return {"api_version": api_version, "count": count, "data": data}
 
