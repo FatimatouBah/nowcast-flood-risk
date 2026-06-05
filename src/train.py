@@ -1,13 +1,18 @@
+import os
 import mlflow
 import mlflow.sklearn
 import pandas as pd
-import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import f1_score
 
+base_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(base_dir) if "src" in base_dir else base_dir
+db_path = os.path.join(project_root, "mlflow.db")
+mlflow.set_tracking_uri(f"sqlite:///{db_path}")
+
 data_path = "src/fb/hubeau/"
 
-files = [f for f in os.listdir(data_path) if f.endswith(".csv")]
+files = [f for f in os.listdir(data_path) if f.endswith(".csv") and "obstr" in f]
 
 dfs = []
 
@@ -19,7 +24,7 @@ for f in files:
 
 df = pd.concat(dfs).sort_values("date_obs")
 
-df["risk_level"] = pd.qcut(df["resultat_obs"], 3, labels=[1,2,3])
+df["risk_level"] = pd.qcut(df["resultat_obs"], 3, labels=[1, 2, 3])
 
 df["hour"] = df["date_obs"].dt.hour
 df["month"] = df["date_obs"].dt.month

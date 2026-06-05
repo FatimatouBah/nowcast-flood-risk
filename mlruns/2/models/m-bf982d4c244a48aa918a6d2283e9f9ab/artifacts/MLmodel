@@ -1,4 +1,4 @@
-artifact_path: file:C:/Users/bahfa/Downloads/Nowcast/nowcast-flood-risk/mlruns/1/models/m-1e90cbb813f445e9afb12a10b529f5ed/artifacts
+artifact_path: file:C:/Users/bahfa/Downloads/Nowcast/nowcast-flood-risk/mlruns/2/models/m-bf982d4c244a48aa918a6d2283e9f9ab/artifacts
 flavors:
   python_function:
     env:
@@ -15,9 +15,9 @@ flavors:
     sklearn_version: 1.9.0
     skops_trusted_types: null
 mlflow_version: 3.13.0
-model_id: m-1e90cbb813f445e9afb12a10b529f5ed
-model_size_bytes: 1327987
-model_uuid: m-1e90cbb813f445e9afb12a10b529f5ed
+model_id: m-bf982d4c244a48aa918a6d2283e9f9ab
+model_size_bytes: 452012
+model_uuid: m-bf982d4c244a48aa918a6d2283e9f9ab
 prompts: null
-run_id: 754b1f3c9fdd4d64b2c48eebe107385a
-utc_time_created: '2026-06-04 12:25:50.904010'
+run_id: 242e1dd621194e1ea91f687d0e17c4af
+utc_time_created: '2026-06-04 20:27:07.187645'
