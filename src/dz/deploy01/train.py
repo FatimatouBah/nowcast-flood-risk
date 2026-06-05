@@ -88,6 +88,11 @@ MLFLOW_ARTIFACT_URI = os.getenv("ARTIFACT_ROOT")
 # Retrieve the BACKEND_STORE_URI (Neon DB URL) from the environment variables
 BACKEND_STORE_URI = os.getenv("BACKEND_STORE_URI")
 
+# Print the effective tracking URI at startup to avoid ambiguity
+print(f"MLflow Tracking URI: {mlflow.get_tracking_uri()}")
+print(f"MLflow Registry URI: {mlflow.get_registry_uri()}")
+print(f"MLflow Artifact URI setting: {MLFLOW_ARTIFACT_URI}")
+
 
 TITLE_POSTFIX_NAME = f"{site_name} - {code_site} - {code_station} : {TARGET_VARIABLE_NOTATION}"
 FILE_POSTFIX_NAME = TITLE_POSTFIX_NAME.replace(' ', '').replace(':', '_').replace('-', '_').replace('(', '').replace(')', '')
@@ -176,11 +181,6 @@ def main() -> None:
     # Set the newly created or existing experiment as the active one for this script
     # set mlflow experiment name (optional, will create if it doesn't exist)
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
-    
-    # Print the effective tracking URI at startup to avoid ambiguity
-    print(f"MLflow Tracking URI: {mlflow.get_tracking_uri()}")
-    print(f"MLflow Registry URI: {mlflow.get_registry_uri()}")
-    print(f"MLflow Artifact URI setting: {MLFLOW_ARTIFACT_URI}")
     
     # Initialize the MLflow client to interact with the tracking server (Neon DB) 
     # tracking_uri: the URI of the MLflow tracking server (Neon DB URL) - Address of local or remote tracking server. If not provided, defaults to the service set by mlflow.tracking.set_tracking_uri. See Where Runs Get Recorded for more info.
