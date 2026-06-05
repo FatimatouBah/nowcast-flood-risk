@@ -1,4 +1,9 @@
 streamlit
+plotly
+pandas
 scikit-learn
+xgboost
+mlflow
 joblib
 numpy
+requests
