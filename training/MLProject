@@ -1,0 +1,29 @@
+# Name of the experiment (and the new docker image that MLFlow will create when running the file)
+name: final_project_forecasting_hubeau
+
+docker_env:
+  # Name of the image we'll be running a container from: docker_profil_name/docker_image_name
+  image: dzedocker/mlflow3-flood-dz_img
+  # image: flood-mlflow-server:latest
+  # Volume binding
+  volumes: [ "$(pwd):/home/user/app" ]
+  # volumes: ["$HOME:/home/app"]
+  # Set environment variables
+  environment: [ "HOME", "MLFLOW_TRACKING_URI", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "BACKEND_STORE_URI", "ARTIFACT_STORE_URI", "ARTIFACT_ROOT" ]
+
+entry_points:
+  main:
+    # command: "python train.py"
+    parameters:
+      # Parameter for our training: Include seasonality components (True or False)
+      seasonality: { type: bool, default: False }
+      # Parameter for our training: Changepoint prior scale
+      changepoint_prior_scale: { type: float, default: 0.05 }
+      # Parameter for our training: Seasonality prior scale
+      seasonality_prior_scale: { type: float, default: 10 }
+      # Parameter for our training: Random seed
+      random-state: { type: int, default: 42 }
+      # Parameter for our training: Number of CPUs
+      ncpus: { type: int, default: 1 }
+    # Command that will be run when running that file 
+    command: "python train.py --seasonality {seasonality} --changepoint_prior_scale {changepoint_prior_scale} --seasonality_prior_scale {seasonality_prior_scale} --random-state {random-state} --ncpus {ncpus}"
