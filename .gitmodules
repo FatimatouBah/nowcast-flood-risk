@@ -1,3 +1,0 @@
-[submodule "api"]
-	path = api
-	url = https://huggingface.co/spaces/nicolaspichon35/dsfsft41-ml-flood-forecasting-api
