@@ -30,11 +30,12 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
     rate = 0
     pages = 0
     next_url = url
+    next_params = params
     complete = False
     while not complete:
         complete = True
 
-        json_page, elapsed_in_seconds = request_json(next_url, params=params, user_agent=user_agent, timeout_in_seconds=timeout_in_seconds)
+        json_page, elapsed_in_seconds = request_json(next_url, params=next_params, user_agent=user_agent, timeout_in_seconds=timeout_in_seconds)
         if json_page:
             duration_in_seconds += elapsed_in_seconds  # elasped time is usually betwenn 250 and 750 ms.
 
@@ -61,7 +62,8 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
             next_url = json_page.get("next")
             if next_url:
                 complete = False
-                
+                next_params = None # params are already in next_url
+
                 # respecter les limites de l'API
                 if requests_per_second > 0:
                     if rate > requests_per_second:
