@@ -1,3 +1,13 @@
+---
+title: Nowcast Flood Risk
+emoji: 🌊
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_file: app.py
+pinned: false
+---
+
 # nowcast-flood-risk
 
 **Système de nowcast du risque d'inondation par ML**
@@ -42,15 +52,6 @@ opérationnelle et déployable sans infrastructure lourde.
 ## Lancer le projet
 
 ```bash
-git clone https://github.com/FatimatouBah/nowcast-flood-risk.git
+git clone [https://github.com/FatimatouBah/nowcast-flood-risk.git](https://github.com/FatimatouBah/nowcast-flood-risk.git)
 cd nowcast-flood-risk
 pip install -r requirements.txt
-```
-
----
-
-## Équipe
-
-Projet réalisé dans le cadre du Mastère Architecte IA — Jedha Bootcamp
-
-Test modification Git

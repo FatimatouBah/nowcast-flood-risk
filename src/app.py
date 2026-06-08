@@ -2,9 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
-import mlflow.sklearn
+import joblib
 import plotly.graph_objects as go
-import plotly.express as px
 
 st.set_page_config(
     page_title="Nowcast Risque Inondation — Ill Grand Est",
@@ -12,7 +11,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# CSS personnalisé
 st.markdown("""
 <style>
     .main { background-color: #f0f4f8; }
@@ -31,41 +29,56 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header
 st.markdown("# 🌊 Nowcast Risque d'Inondation")
 st.markdown("### Bassin versant de l'Ill — Grand Est | Mise à jour en quasi-temps réel")
 st.markdown("---")
 
-# Chargement modèle
 @st.cache_resource
 def load_model():
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    client = mlflow.tracking.MlflowClient()
-    runs = client.search_runs(experiment_ids=["1"], order_by=["metrics.f1 DESC"], max_results=1)
-    run_id = runs[0].info.run_id
-    return mlflow.sklearn.load_model(f"runs:/{run_id}/model")
+    for root, dirs, files in os.walk("mlruns"):
+        for f in files:
+            if f == "model.pkl":
+                return joblib.load(os.path.join(root, f))
+    raise FileNotFoundError("Aucun modèle trouvé dans mlruns")
 
-# Chargement données
 @st.cache_data
 def load_data():
-    data_path = "src/fb/hubeau/"
+    possible_paths = [
+        "hubeau",
+        "src/fb/hubeau",
+        "/app/hubeau",
+        "/app/src/fb/hubeau"
+    ]
+
+    data_path = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            data_path = path
+            break
+
+    if data_path is None:
+        raise FileNotFoundError("Dossier hubeau introuvable")
+
     files = [f for f in os.listdir(data_path) if f.endswith(".csv") and "obstr" in f]
+
     dfs = {}
     for f in sorted(files):
-        parts = f.replace('.csv','').split('_')
+        parts = f.replace(".csv", "").split("_")
         station = parts[2]
         grandeur = parts[3]
         key = f"{station}_{grandeur}"
-        df = pd.read_csv(data_path + f)
-        df['date_obs'] = pd.to_datetime(df['date_obs'])
-        df = df.sort_values('date_obs')
+
+        df = pd.read_csv(os.path.join(data_path, f))
+        df["date_obs"] = pd.to_datetime(df["date_obs"])
+        df = df.sort_values("date_obs")
+
         dfs[key] = df
+
     return dfs
 
 model = load_model()
 dfs = load_data()
 
-# Stations metadata
 stations_info = {
     "A161003001": {"nom": "Ill à Colmar",       "lat": 48.080, "lon": 7.358, "riviere": "Ill"},
     "A214010001": {"nom": "Fecht à Ostheim",     "lat": 48.166, "lon": 7.358, "riviere": "Fecht"},
@@ -73,7 +86,6 @@ stations_info = {
     "A348020001": {"nom": "Zorn à Waltenheim",   "lat": 48.716, "lon": 7.583, "riviere": "Zorn"},
 }
 
-# Prédiction pour chaque station
 def get_risk(station_code):
     key = f"{station_code}_H"
     if key not in dfs:
@@ -91,24 +103,20 @@ risk_colors = {1: "#28a745", 2: "#ffc107", 3: "#dc3545"}
 risk_labels = {1: "🟢 FAIBLE", 2: "🟡 MODÉRÉ", 3: "🔴 ÉLEVÉ"}
 risk_css    = {1: "risk-green", 2: "risk-yellow", 3: "risk-red"}
 
-# Layout principal
 col1, col2 = st.columns([3, 2])
 
 with col1:
     st.subheader("🗺️ Carte des stations — Bassin de l'Ill")
-    
-    lats, lons, noms, risques, couleurs, hauteurs, textes = [], [], [], [], [], [], []
+    lats, lons, noms, couleurs, textes = [], [], [], [], []
     for code, info in stations_info.items():
         risk, hauteur = get_risk(code)
         lats.append(info["lat"])
         lons.append(info["lon"])
         noms.append(info["nom"])
-        risques.append(risk_labels.get(risk, "N/A"))
         couleurs.append(risk_colors.get(risk, "#888888"))
-        hauteurs.append(f"{hauteur:.0f} mm")
         textes.append(f"{info['nom']}<br>Risque: {risk_labels.get(risk,'N/A')}<br>Hauteur: {hauteur:.0f} mm")
 
-    fig_map = go.Figure(go.Scattermapbox(
+    fig_map = go.Figure(go.Scattermap(
         lat=lats, lon=lons,
         mode='markers+text',
         marker=dict(size=20, color=couleurs, opacity=0.9),
@@ -122,7 +130,7 @@ with col1:
         margin=dict(l=0, r=0, t=0, b=0),
         height=420
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, width='stretch')
 
 with col2:
     st.subheader("🚨 Niveaux de vigilance")
@@ -139,8 +147,6 @@ with col2:
         """, unsafe_allow_html=True)
 
 st.markdown("---")
-
-# Graphiques séries temporelles
 st.subheader("📈 Séries temporelles — Hauteur d'eau par station")
 
 station_options = {info["nom"]: code for code, info in stations_info.items()}
@@ -150,20 +156,16 @@ selected_code = station_options[selected_nom]
 key_h = f"{selected_code}_H"
 if key_h in dfs:
     df_plot = dfs[key_h].copy()
-    
     q33 = df_plot['resultat_obs'].quantile(0.33)
     q66 = df_plot['resultat_obs'].quantile(0.66)
-    
     fig_ts = go.Figure()
     fig_ts.add_trace(go.Scatter(
         x=df_plot['date_obs'], y=df_plot['resultat_obs'],
-        mode='lines', name='Hauteur d\'eau',
+        mode='lines', name="Hauteur d'eau",
         line=dict(color='#003189', width=2)
     ))
-    fig_ts.add_hline(y=q33, line_dash="dash", line_color="#28a745", 
-                     annotation_text="Seuil faible→modéré")
-    fig_ts.add_hline(y=q66, line_dash="dash", line_color="#dc3545", 
-                     annotation_text="Seuil modéré→élevé")
+    fig_ts.add_hline(y=q33, line_dash="dash", line_color="#28a745", annotation_text="Seuil faible→modéré")
+    fig_ts.add_hline(y=q66, line_dash="dash", line_color="#dc3545", annotation_text="Seuil modéré→élevé")
     fig_ts.update_layout(
         title=f"Hauteur d'eau — {stations_info[selected_code]['nom']}",
         xaxis_title="Date",
@@ -172,11 +174,9 @@ if key_h in dfs:
         plot_bgcolor='white',
         paper_bgcolor='white',
     )
-    st.plotly_chart(fig_ts, use_container_width=True)
+    st.plotly_chart(fig_ts, width='stretch')
 
 st.markdown("---")
-
-# Simulateur
 st.subheader("🔮 Simulateur de prédiction")
 col3, col4, col5 = st.columns(3)
 with col3:
