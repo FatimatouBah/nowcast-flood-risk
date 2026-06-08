@@ -1,0 +1,6 @@
+Dockerfile
+.gitignore
+.gitignore
+.gitattributes
+.venv*
+.env

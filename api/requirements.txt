@@ -1,0 +1,8 @@
+# api's requirements for python 3.11
+fastapi[standard]
+pydantic>=2.0
+typing 
+pandas>=2.0
+numpy>=1.26
+requests>=2.31.0,<3
+python-dotenv
