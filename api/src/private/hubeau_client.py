@@ -52,7 +52,7 @@ class HubeauClient:
 
     def request_observations(self, quantity_code: str, station_code: str, from_date: dt.date, to_date: dt.date) -> dict: 
         """
-        Return {"api_version", "count", "observations": [{"ds", "y"}]} 
+        Return {"api_version", "count", "observations": [{"ds", "yobs"}]} 
         """
         
         def format_date_(d_, end_of_the_day_=False):
@@ -64,7 +64,7 @@ class HubeauClient:
         def extract_observation_(o_):
             return {
                 "ds": o_["date_obs_elab"],
-                "y":  o_["resultat_obs_elab"],
+                "yobs":  o_["resultat_obs_elab"],
             }
         
         quantity_code_map = {"hixnj": "HIXnJ"}

@@ -1,7 +1,11 @@
+import os
+import json
+import mlflow
 import logging
+import pandas as pd
 import datetime as dt
 from pydantic import BaseModel
-from typing import Tuple, List, Union, Literal
+from typing import Optional
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -17,7 +21,7 @@ from private.hubeau_client import HubeauClient
 LOGGER = logging.getLogger(__name__)
 
 API_TITLE = "Machine Learning Flood Forecasting API"
-API_FAVICON_FILEPATH = "favicon-16.png"
+API_FAVICON_FILEPATH = "private/favicon-16.png"
 
 # -----------------------------------------------------------------------------
 # Utilities
@@ -29,58 +33,90 @@ def report_endpoint_exception(e, context):
 # -----------------------------------------------------------------------------
 # MLFLOW setup
 # -----------------------------------------------------------------------------
+# Sur Hugging Face, ces variables sont lues depuis les "Secrets"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
+MLFLOW_REGISTERED_MODEL_NAME = os.getenv("MLFLOW_REGISTERED_MODEL_NAME")
+MLFLOW_MODEL_ALIAS = os.getenv("MLFLOW_MODEL_ALIAS")
 
-# TMP :
+# On force l'URI pour mlflow
+if MLFLOW_TRACKING_URI:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
-def date_range(d1, d2):
-    current = d1
-    while current <= d2:
-        yield current
-        current += dt.timedelta(days=1)
+def build_mlflow_model_uri(quantity_code, station_code) -> Optional[str]:  # or None
+    if quantity_code not in [QUANTITY_CODE_HIXNJ]:
+        LOGGER.warning(f"There are no prediction models for quantity: {quantity_code}")
+        return None
+    
+    # TODO : use a model dedicated to the given station.
+    LOGGER.warning("Building MLflow model's URI : apply the same model for all stations...")
+
+    # ex: models:/flood_forecast_model@baseline
+    return f"models:/{MLFLOW_REGISTERED_MODEL_NAME}@{MLFLOW_MODEL_ALIAS}"
+
+# -----------------------------------------------------------------------------
 
 class StationPredictor:
-    def __init__(self, quantity_code, station_code):
+    def __init__(self, quantity_code, station_code, model):
         self.quantity_code = quantity_code
         self.station_code = station_code
+        self.model = model # model dedicated to the given quantity and station
 
     def predict(self, from_date: dt.date, to_date: dt.date):
-        def predict_fake_(ds_):
-            return 0.0
-    
-        dated_values = [ {"ds": ds, "y": predict_fake_(ds)} for ds in date_range(from_date, to_date)]
-        return dated_values
+        def do_predict_(future_):
+            df_ = self.model.predict(future_)
+            assert(isinstance(df_, pd.DataFrame))
+            fields_of_interest_ = ["ds", "yhat", "yhat_lower", "yhat_upper"]
+            assert(all(foi in df_.columns for foi in fields_of_interest_))
+            df_ = df_[fields_of_interest_]
+            df_["ds"] = df_["ds"].dt.strftime('%Y-%m-%d')  # convert timestamps to formatted dates
+            return df_
+        
+        # assume a prophet model : 
+        #   - inputs  : DF("ds" [, ...])
+        #   - outputs : DF("ds", "yhat", "yhat_lower", "yhat_upper" [, "trend", "daily", ...])
 
+        df_future = pd.DataFrame({"ds": pd.date_range(start=from_date, end=to_date, freq='D')})
+        df_values = do_predict_(df_future)
+
+        output = json.loads(df_values.to_json(orient='records'))
+        return output
+
+STATION_CODE_KOGENHEIM = "A236003001"
 QUANTITY_CODE_HIXNJ = "hixnj"
 
 class HixnjStationPredictor(StationPredictor):
-    def __init__(self, station_code):
-        super().__init__(quantity_code=QUANTITY_CODE_HIXNJ, station_code=station_code)
+    def __init__(self, station_code, model):
+        super().__init__(quantity_code=QUANTITY_CODE_HIXNJ, station_code=station_code, model=model)
 
-predictors_cache = {
-    "A236003001": {
-        QUANTITY_CODE_HIXNJ: HixnjStationPredictor(station_code="A236003001")
-    }
-}
+app_predictors_cache = {}
 
-# return an instance of StationPredictor or 
+# return an instance of StationPredictor or None
 def load_prediction_model(station_code, quantity_code): 
-    return HixnjStationPredictor(station_code=station_code) if quantity_code == QUANTITY_CODE_HIXNJ else None
+    if quantity_code == QUANTITY_CODE_HIXNJ:
+        model_uri = build_mlflow_model_uri(quantity_code=quantity_code, station_code=station_code)
+        if model_uri is None:
+            return None  # there are no models for the given quantity and station
+        
+    # DEBUG: print("****** on loading model at:", model_uri)
+    model = mlflow.prophet.load_model(model_uri)
+    # DEBUG: print(">>>>>> loaded:", model)
+    return HixnjStationPredictor(station_code=station_code, model=model)
 
 def fetch_station_predictor_from_cache(station_code, quantity_code):
-    if not ((station_code in predictors_cache.keys()) and \
-            (quantity_code in (predictors_cache[station_code]).keys())):
+    if not ((station_code in app_predictors_cache.keys()) and \
+            (quantity_code in (app_predictors_cache[station_code]).keys())):
         predictor = load_prediction_model(station_code, quantity_code)
         if predictor is None:
             raise ValueError(f"cannot find <{quantity_code}> prediction model for station: <{station_code}>")
-        predictors_cache[station_code] = dict(hixnj=predictor)
+        app_predictors_cache[station_code] = dict(hixnj=predictor)
 
-    predictor = predictors_cache[station_code][quantity_code]
+    predictor = app_predictors_cache[station_code][quantity_code]
     return predictor
 
 def do_predict_values(predictor, from_date, to_date):
         predictions = predictor.predict(from_date, to_date)
 
-        # return {"api_version", "count",  "values": [ {"ds", "y"} ] }
+        # return {"api_version", "count",  "values": [ {"ds", "yhat", ...} ] }
         return { 
             "api_version": API_VERSION, 
             "count": len(predictions), 
@@ -88,10 +124,9 @@ def do_predict_values(predictor, from_date, to_date):
         }
 
 # -----------------------------------------------------------------------------
-# HUBEAU client
+# App's Hub'Eau client
 # -----------------------------------------------------------------------------
-
-hb_client = HubeauClient()
+app_data_client = HubeauClient()
 
 # -----------------------------------------------------------------------------
 # Load resources (models, etc.) on startup
@@ -99,21 +134,28 @@ hb_client = HubeauClient()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     LOGGER.info("loading resources on start-up...")
+    try:
+        # check the health of the system
+        _ = fetch_station_predictor_from_cache(station_code=STATION_CODE_KOGENHEIM, quantity_code=QUANTITY_CODE_HIXNJ)
+        LOGGER.info("Test model loaded successfully!")
+        setattr(app, "status", True)
+    except Exception as e:
+        LOGGER.error(f"Failed to load test model: exception <{type(e)}> : {e}")
+        setattr(app, "status", False)
     yield
 
 # -----------------------------------------------------------------------------
-# FastAPI Setup
+# FastAPI setup
 # -----------------------------------------------------------------------------
 app = FastAPI(lifespan=lifespan, version=API_VERSION, title=API_TITLE)
 
-class HixnjStationPredictionFeatures(BaseModel):
-    station_code: str
-    from_date: dt.date
-    to_date: dt.date
+# health status:
+setattr(app, "status", False)
 
 # -----------------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------------
+
 
 @app.get('/favicon.ico', include_in_schema=False)
 async def get_favicon():
@@ -128,7 +170,7 @@ async def get_status():
     """
 
     LOGGER.info("GET /status")
-    return {"status": True}  
+    return {"status": getattr(app, "status")}  
 
 @app.get("/stations")
 async def get_stations():
@@ -140,7 +182,7 @@ async def get_stations():
 
     LOGGER.info("GET /stations")
     try:
-        stations = hb_client.request_stations()
+        stations = app_data_client.request_stations()
     except Exception as e:
         report_endpoint_exception(e, context="requesting stations")
     else:
@@ -153,12 +195,12 @@ async def get_values_hixnj(station_code: str, from_date: dt.date, to_date: dt.da
 
     Mandatory query parameters : station_code, from_date, to_date.
 
-    Return { api_version, count, values: [ { ds, y } ] }.
+    Return JSON content : { api_version, count, values: [ { ds, yobs } ] }.
     """
 
     LOGGER.info("GET /values/hixnj")
     try:
-        observations = hb_client.request_observations(
+        observations = app_data_client.request_observations(
             quantity_code=QUANTITY_CODE_HIXNJ, 
             station_code=station_code,
             from_date=from_date, 
@@ -170,14 +212,19 @@ async def get_values_hixnj(station_code: str, from_date: dt.date, to_date: dt.da
     else:
         return observations
 
+class HixnjStationPredictionFeatures(BaseModel):
+    station_code: str
+    from_date: dt.date
+    to_date: dt.date
+
 @app.post("/values/hixnj/predict") 
 async def predict_values_hixnj(payload: HixnjStationPredictionFeatures):
     """
     Predict HIXnJ values at a given station on a given date window.
 
-    Mandatory body payload : { station_code, from_date, to_date }.
-    
-    Return { api_version, count, values: [ { ds, y } ] }.
+    Mandatory JSON body payload : { station_code, from_date, to_date }.
+
+    Return JSON content : { api_version, count, values: [ { ds, yhat, yhat_lower, yhat_upper } ] }.
     """
 
     LOGGER.info("POST /values/hixnj/predict")
@@ -188,10 +235,10 @@ async def predict_values_hixnj(payload: HixnjStationPredictionFeatures):
         report_endpoint_exception(e, context=context)
     else:
         try:
-            predictions = do_predict_values(predictor, payload.date_window)         
+            predictions = do_predict_values(predictor, payload.from_date, payload.to_date)         
         except Exception as e:
-            context = f"predicting {QUANTITY_CODE_HIXNJ} predictor for {{station: \"{payload.station_code}\", date_window: ({payload.from_date}, {payload.to_date})}}"
-            report_endpoint_exception(e, context=f"context")
+            context = f"predicting {QUANTITY_CODE_HIXNJ} values for {{station: \"{payload.station_code}\", date_window: ({payload.from_date}, {payload.to_date})}}"
+            report_endpoint_exception(e, context=context)
         else:
             return predictions
 
