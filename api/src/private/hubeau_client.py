@@ -3,6 +3,9 @@ from private.sites import SITES as SAMPLE_SITES
 from private.utils import request_json_all
 
 import datetime as dt
+import numpy as np
+
+TEMPORARY_HIXNJ_TIME_PERIOD = ("2007-01-01", "2026-06-01")
 
 class HubeauClient:
 
@@ -38,8 +41,10 @@ class HubeauClient:
 
         stations_codes = collect_sample_sites_stations_codes_(SAMPLE_SITES)
         params["code_station"] = ",".join(stations_codes)
+        
         # TODO :
         # params["fields"] = ",".join(output_fields)
+
         json_all = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
         assert(isinstance(json_all, dict))
         assert("data" in json_all)
@@ -47,10 +52,32 @@ class HubeauClient:
         return {
             "api_version": API_VERSION, 
             "count" : len(stations), 
-            "values": stations
+            "stations": stations
         }
 
-    def request_observations(self, quantity_code: str, station_code: str, from_date: dt.date, to_date: dt.date) -> dict: 
+    def request_station_dates(self, station_code: str, quantity_code: str) -> dict: 
+        """
+        Return {"api_version", "dates": {"lower", "upper"}} 
+        """
+        # TODO : 
+        return {"api_version": API_VERSION, "dates": {"lower": TEMPORARY_HIXNJ_TIME_PERIOD[0], "upper": TEMPORARY_HIXNJ_TIME_PERIOD[1]}}
+
+    def request_station_thresholds(self, station_code: str, quantity_code: str, percentiles: list[int]) -> dict: 
+        """
+        Return {"api_version", "thresholds": {"qnn", ... (for nn in percentiles)}}
+        """
+
+        dates = self.request_station_dates(station_code=station_code, quantity_code=quantity_code)    
+        from_date = dt.date.fromisoformat(dates["dates"]["lower"])
+        to_date = dt.date.fromisoformat(dates["dates"]["upper"])
+        # DEBUG: print(f"****** dates: {from_date} ({type(from_date)}), {to_date} ({type(to_date)})")
+        observations = self.request_station_observations(station_code=station_code, quantity_code=quantity_code, from_date=from_date, to_date=to_date)
+        # DEBUG: print(f"****** observations: {type(observations)} ({len(observations)})")
+        thresholds = self._compute_thresholds(observations, percentiles)
+        # DEBUG: print("****** thresholds:", thresholds)
+        return {"api_version": API_VERSION, "thresholds": thresholds}
+
+    def request_station_observations(self, station_code: str, quantity_code: str, from_date: dt.date, to_date: dt.date) -> dict: 
         """
         Return {"api_version", "count", "observations": [{"ds", "yobs"}]} 
         """
@@ -104,3 +131,22 @@ class HubeauClient:
             "count" : len(observations), 
             "observations": observations
         }
+
+    # -----------------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_thresholds(observations, percentiles: list[int]) -> float:
+        # DEBUG: print("------ inside _compute_thresholds:")
+        # DEBUG: print(f"--------- observations: {type(observations)} ({len(observations)})")
+        assert(isinstance(observations, dict))
+        assert("observations" in observations.keys())
+        # DEBUG: print(f"--------- observations: {type(observations["observations"])} ({len(observations["observations"])})")
+        assert(isinstance(observations["observations"], list))
+        if observations["observations"]:
+            # DEBUG: print(f"------------ head: {type(observations["observations"][0])} ({len(observations["observations"][0])})")
+            assert(isinstance(observations["observations"][0], dict))
+            assert("yobs" in observations["observations"][0].keys())
+        values = [obs["yobs"] for obs in observations["observations"]]
+        # DEBUG: print(f"--------- values: {type(values)} ({len(values)})")
+        thresholds = {f"q{str(percentile)}": np.percentile(values, percentile) for percentile in percentiles}
+        return thresholds 

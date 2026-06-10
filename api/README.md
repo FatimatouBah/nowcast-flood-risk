@@ -8,8 +8,6 @@ pinned: false
 short_description: Serve the ml-flood-forecasting project's API.
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference.
-
 ##### Application documentation
 
 Check out application documentation at https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space/docs.

@@ -2,6 +2,7 @@ import os
 import json
 import mlflow
 import logging
+import numpy as np
 import pandas as pd
 import datetime as dt
 from pydantic import BaseModel
@@ -120,7 +121,7 @@ def do_predict_values(predictor, from_date, to_date):
         return { 
             "api_version": API_VERSION, 
             "count": len(predictions), 
-            "values": predictions
+            "predictions": predictions
         }
 
 # -----------------------------------------------------------------------------
@@ -156,7 +157,6 @@ setattr(app, "status", False)
 # Endpoints
 # -----------------------------------------------------------------------------
 
-
 @app.get('/favicon.ico', include_in_schema=False)
 async def get_favicon():
     return FileResponse(API_FAVICON_FILEPATH)
@@ -177,7 +177,7 @@ async def get_stations():
     """
     Get the list iof available stations.
 
-    Return { api_version, count, values: [ { site, code, etc. } ] }.
+    Return { api_version, count, stations: [ { site, code, etc. } ] }.
     """
 
     LOGGER.info("GET /stations")
@@ -188,26 +188,71 @@ async def get_stations():
     else:
         return stations
 
-@app.get("/values/hixnj")
-async def get_values_hixnj(station_code: str, from_date: dt.date, to_date: dt.date):
+@app.get("/station/hixnj/dates")
+async def get_station_hixnj_dates(station_code: str):
+    """
+    Get lower and upper dates of the available HIXnJ observations at the given station.
+
+    Mandatory query parameters : station_code.
+
+    Return JSON content : { api_version, dates: { lower, upper } }.
+    """
+
+    LOGGER.info("GET /station/hixnj/dates")
+    try:
+        dates = app_data_client.request_station_dates(
+            quantity_code=QUANTITY_CODE_HIXNJ,
+            station_code=station_code
+        )    
+    except Exception as e:
+        context = f"requesting dates for available {QUANTITY_CODE_HIXNJ} observations for {{station: {station_code}}}"
+        report_endpoint_exception(e, context=context)
+    else:    
+        return dates  # {"api_version": API_VERSION, "dates": {"lower": TEMPORARY_HIXNJ_TIME_PERIOD[0], "upper":TEMPORARY_HIXNJ_TIME_PERIOD[1]}}
+
+@app.get("/station/hixnj/thresholds")
+async def get_station_hixnj_thresholds(station_code: str):
+    """
+    Get the alert thresholds dates of the available HIXnJ observations at the given station.
+
+    Mandatory query parameters : station_code.
+
+    Return JSON content : { api_version, thresholds: { q98 } }.
+    """
+
+    LOGGER.info("GET /station/hixnj/thresholds")
+    try:
+        thresholds = app_data_client.request_station_thresholds(
+            quantity_code=QUANTITY_CODE_HIXNJ,
+            station_code=station_code,
+            percentiles=[0, 98, 100]
+        )    
+    except Exception as e:
+        context = f"requesting {QUANTITY_CODE_HIXNJ} thresholds for {{station: {station_code}}}"
+        report_endpoint_exception(e, context=context)
+    else:
+        return thresholds
+
+@app.get("/station/hixnj/observations")
+async def get_station_hixnj_observations(station_code: str, from_date: dt.date, to_date: dt.date):
     """
     Get HIXnJ observations at a given station on a given date window.
 
     Mandatory query parameters : station_code, from_date, to_date.
 
-    Return JSON content : { api_version, count, values: [ { ds, yobs } ] }.
+    Return JSON content : { api_version, count, observations: [ { ds, yobs } ] }.
     """
 
-    LOGGER.info("GET /values/hixnj")
+    LOGGER.info("GET /station/hixnj/observations")
     try:
-        observations = app_data_client.request_observations(
+        observations = app_data_client.request_station_observations(
             quantity_code=QUANTITY_CODE_HIXNJ, 
             station_code=station_code,
             from_date=from_date, 
             to_date=to_date
         )
     except Exception as e:
-        context = f"requesting {QUANTITY_CODE_HIXNJ} values for {{station: \"{station_code}\", from_date: {from_date}, to_date: {to_date}}}"
+        context = f"requesting {QUANTITY_CODE_HIXNJ} observations for {{station: {station_code}, from_date: {from_date}, to_date: {to_date}}}"
         report_endpoint_exception(e, context=context)
     else:
         return observations
@@ -217,27 +262,27 @@ class HixnjStationPredictionFeatures(BaseModel):
     from_date: dt.date
     to_date: dt.date
 
-@app.post("/values/hixnj/predict") 
-async def predict_values_hixnj(payload: HixnjStationPredictionFeatures):
+@app.post("/station/hixnj/predict") 
+async def predict_station_hixnj(payload: HixnjStationPredictionFeatures):
     """
     Predict HIXnJ values at a given station on a given date window.
 
     Mandatory JSON body payload : { station_code, from_date, to_date }.
 
-    Return JSON content : { api_version, count, values: [ { ds, yhat, yhat_lower, yhat_upper } ] }.
+    Return JSON content : { api_version, count, predictions: [ { ds, yhat, yhat_lower, yhat_upper } ] }.
     """
 
-    LOGGER.info("POST /values/hixnj/predict")
+    LOGGER.info("POST /station/hixnj/predict")
     try:
         predictor = fetch_station_predictor_from_cache(station_code=payload.station_code, quantity_code=QUANTITY_CODE_HIXNJ)
     except Exception as e:
-        context = f"fetching {QUANTITY_CODE_HIXNJ} predictor for {{station: \"{payload.station_code}\"}}"
+        context = f"fetching {QUANTITY_CODE_HIXNJ} predictor for {{station: {payload.station_code}}}"
         report_endpoint_exception(e, context=context)
     else:
         try:
             predictions = do_predict_values(predictor, payload.from_date, payload.to_date)         
         except Exception as e:
-            context = f"predicting {QUANTITY_CODE_HIXNJ} values for {{station: \"{payload.station_code}\", date_window: ({payload.from_date}, {payload.to_date})}}"
+            context = f"predicting {QUANTITY_CODE_HIXNJ} values for {{station: {payload.station_code}, date_window: ({payload.from_date}, {payload.to_date})}}"
             report_endpoint_exception(e, context=context)
         else:
             return predictions
