@@ -5,7 +5,8 @@ import joblib
 import plotly.graph_objects as go
 from datetime import datetime
 
-st.set_page_config(page_title="Prévisions Inondation — Ill Grand Est", page_icon="💦", layout="wide")
+# Une seule configuration au début
+st.set_page_config(page_title="Nowcast Inondation", page_icon="💦", layout="wide")
 
 st.markdown("""
 <style>
@@ -32,23 +33,15 @@ model = load_model()
 expected_cols = getattr(model, "feature_names_in_", ["resultat_obs", "hour", "month"])
 
 @st.cache_data
-def load_data():
+def load_local_data():
+    st.write("Chargement des données en cours...") # Ajout pour le test
     dfs = {}
-    for path in ["hubeau", "src/fb/hubeau", "/app/hubeau"]:
-        if os.path.exists(path):
-            files = [f for f in os.listdir(path) if f.endswith(".csv") and "obstr" in f and "_H_" in f]
-            for f in sorted(files):
-                code = f.replace(".csv","").split("_")[2]
-                df = pd.read_csv(os.path.join(path, f))
-                df.columns = df.columns.str.lower().str.strip()
-                if "date_obs" in df.columns and "resultat_obs" in df.columns:
-                    df["resultat_obs"] = pd.to_numeric(df["resultat_obs"], errors="coerce")
-                    df["date_obs"] = pd.to_datetime(df["date_obs"])
-                    df = df.dropna(subset=["resultat_obs","date_obs"])
-                    df = df[(df["resultat_obs"] > 0) & (df["resultat_obs"] < 3000)]
-                    dfs[code] = df.sort_values("date_obs")
+    path = "hubeau"
+    if not os.path.exists(path):
+        st.error(f"Le dossier {path} est introuvable !")
+        return {}
+    # ... le reste de ta fonction ...
     return dfs
-
 stations = {
     "A161003001": {"nom": "Ill à Colmar", "lat": 48.080, "lon": 7.358},
     "A214010001": {"nom": "Fecht à Ostheim", "lat": 48.166, "lon": 7.358},
