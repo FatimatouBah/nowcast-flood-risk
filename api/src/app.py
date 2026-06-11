@@ -120,6 +120,7 @@ def do_predict_values(predictor, from_date, to_date):
         # return {"api_version", "count",  "values": [ {"ds", "yhat", ...} ] }
         return { 
             "api_version": API_VERSION, 
+            "etime": 0.0,  # TODO
             "count": len(predictions), 
             "predictions": predictions
         }
@@ -177,7 +178,7 @@ async def get_stations():
     """
     Get the list iof available stations.
 
-    Return { api_version, count, stations: [ { site, code, etc. } ] }.
+    Return { api_version, etime, count, stations: [ { site, code, etc. } ] }.
     """
 
     LOGGER.info("GET /stations")
@@ -191,11 +192,11 @@ async def get_stations():
 @app.get("/station/hixnj/dates")
 async def get_station_hixnj_dates(station_code: str):
     """
-    Get lower and upper dates of the available HIXnJ observations at the given station.
+    Get the dates window of the available HIXnJ observations at the given station.
 
     Mandatory query parameters : station_code.
 
-    Return JSON content : { api_version, dates: { lower, upper } }.
+    Return JSON content : { api_version, etime, dates: { lower, upper } }.
     """
 
     LOGGER.info("GET /station/hixnj/dates")
@@ -208,24 +209,23 @@ async def get_station_hixnj_dates(station_code: str):
         context = f"requesting dates for available {QUANTITY_CODE_HIXNJ} observations for {{station: {station_code}}}"
         report_endpoint_exception(e, context=context)
     else:    
-        return dates  # {"api_version": API_VERSION, "dates": {"lower": TEMPORARY_HIXNJ_TIME_PERIOD[0], "upper":TEMPORARY_HIXNJ_TIME_PERIOD[1]}}
+        return dates
 
-@app.get("/station/hixnj/thresholds")
-async def get_station_hixnj_thresholds(station_code: str):
+@app.get("/station/hixnj/stats")
+async def get_station_hixnj_stats(station_code: str):
     """
-    Get the alert thresholds dates of the available HIXnJ observations at the given station.
+    Get statistics of the available HIXnJ observations at the given station (min, max, q98, etc.).
 
     Mandatory query parameters : station_code.
 
-    Return JSON content : { api_version, thresholds: { q98 } }.
+    Return JSON content : { api_version, etime, dates: { lower, upper }, stats: { min, max, ..., q98 } }.
     """
 
-    LOGGER.info("GET /station/hixnj/thresholds")
+    LOGGER.info("GET /station/hixnj/stats")
     try:
-        thresholds = app_data_client.request_station_thresholds(
+        thresholds = app_data_client.request_station_stats(
             quantity_code=QUANTITY_CODE_HIXNJ,
-            station_code=station_code,
-            percentiles=[0, 98, 100]
+            station_code=station_code
         )    
     except Exception as e:
         context = f"requesting {QUANTITY_CODE_HIXNJ} thresholds for {{station: {station_code}}}"
@@ -234,13 +234,13 @@ async def get_station_hixnj_thresholds(station_code: str):
         return thresholds
 
 @app.get("/station/hixnj/observations")
-async def get_station_hixnj_observations(station_code: str, from_date: dt.date, to_date: dt.date):
+async def get_station_hixnj_observations(station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None):
     """
-    Get HIXnJ observations at a given station on a given date window.
+    Get qualified HIXnJ observations at the given station, optionally on the given dates window.
 
-    Mandatory query parameters : station_code, from_date, to_date.
+    Mandatory query parameters : station_code.
 
-    Return JSON content : { api_version, count, observations: [ { ds, yobs } ] }.
+    Return JSON content : { api_version, etime, count, dates, stats, observations: [ { ds, yobs } ] }.
     """
 
     LOGGER.info("GET /station/hixnj/observations")
@@ -265,11 +265,11 @@ class HixnjStationPredictionFeatures(BaseModel):
 @app.post("/station/hixnj/predict") 
 async def predict_station_hixnj(payload: HixnjStationPredictionFeatures):
     """
-    Predict HIXnJ values at a given station on a given date window.
+    Predict HIXnJ values at the given station on the given dates window.
 
     Mandatory JSON body payload : { station_code, from_date, to_date }.
 
-    Return JSON content : { api_version, count, predictions: [ { ds, yhat, yhat_lower, yhat_upper } ] }.
+    Return JSON content : { api_version, etime, count, predictions: [ { ds, yhat, yhat_lower, yhat_upper } ] }.
     """
 
     LOGGER.info("POST /station/hixnj/predict")

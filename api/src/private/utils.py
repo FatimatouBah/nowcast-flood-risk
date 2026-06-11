@@ -80,5 +80,5 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
                 if DEBUG: 
                     print(f"****** next : done")
 
-    return {"api_version": api_version, "elapsed_seconds": duration_in_seconds, "count": count, "data": data}
+    return {"api_version": api_version, "etime": duration_in_seconds, "count": count, "data": data}
 
