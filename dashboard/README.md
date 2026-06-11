@@ -4,9 +4,7 @@ emoji: 💦
 colorFrom: blue
 colorTo: red
 sdk: docker
-short_description: Dashboard cleint for the `ml-flood-forecasting` project.
+short_description: Dashboard client for the `ml-flood-forecasting` project.
 ---
 
-##### Application documentation
-
-Check out application documentation at https://nicolaspichon35-dsfsft41-ml-flood-forecasting-dashboard.hf.space/docs.
+Check out application at https://nicolaspichon35-dsfsft41-ml-flood-forecasting-dashboard.hf.space.
