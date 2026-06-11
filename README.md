@@ -1,11 +1,12 @@
 ---
-title: DSFSFT41 - Machine Learning Flood Forecasting Dashboard
+title: Nowcast Dashboard
 emoji: 💦
 colorFrom: blue
-colorTo: red
-sdk: docker
-short_description: Dashboard cleint for the `ml-flood-forecasting` project.
----
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.35.0
+app_file: app.py
+pinned: false
 
 ##### Application documentation
 
