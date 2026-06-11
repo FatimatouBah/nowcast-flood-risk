@@ -215,7 +215,7 @@ with col1:
         lats.append(station_latitude)
         lons.append(station_longitude)
         couleurs.append(risk_colors.get(level, "#888888"))
-        textes.append(f"{station_label}<br>Risque: {risk_labels.get(level,"N/A")}<br>Hauteur: {height:.0f} mm")
+        textes.append(f"{station_label}<br>Risque: {risk_labels.get(level,'N/A')}<br>Hauteur: {height:.0f} mm")
 
     fig_map = go.Figure(go.Scattermap(
         lat=lats, lon=lons,

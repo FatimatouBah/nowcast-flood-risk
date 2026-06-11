@@ -8,9 +8,10 @@ pinned: false
 short_description: Serve the ml-flood-forecasting project's API.
 ---
 
-##### Application documentation
+##### Application links
 
-Check out application documentation at https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space/docs.
+- API server : https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space
+- API documentation : https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space/docs
 
 ##### Sources tracking
 

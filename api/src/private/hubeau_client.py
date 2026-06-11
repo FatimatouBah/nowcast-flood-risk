@@ -7,6 +7,9 @@ import numpy as np
 
 TEMPORARY_HIXNJ_TIME_PERIOD = ("2007-01-01", "2026-06-01")
 
+PAGE_SIZE_MAX = 20000
+PAGE_SIZE_DEFAULT = PAGE_SIZE_MAX // 2
+
 class HubeauClient:
 
     BASE_URL = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
@@ -14,7 +17,7 @@ class HubeauClient:
 
     def request_stations(self) -> dict: 
         """
-        Return {"api_version", "count", "stations": [{"site", "code", "label", etc.}]} 
+        Return {"api_version", "elapsed_seconds", "count", "stations": [{"site", "code", "label", etc.}]} 
         """
 
         def extract_station_(s_):
@@ -34,7 +37,7 @@ class HubeauClient:
             return [station["code"] for site in sample_sites.values() for station in site["stations"]]
         
         url = f"{self.BASE_URL}/referentiel/stations"
-        params = {"size": 100, "format": "json"}
+        params = {"format": "json", "size": PAGE_SIZE_DEFAULT}
 
         # TODO
         # output_fields = [ "code_site" , "code_station", "libelle_station", ... ]
@@ -45,12 +48,15 @@ class HubeauClient:
         # TODO :
         # params["fields"] = ",".join(output_fields)
 
-        json_all = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
-        assert(isinstance(json_all, dict))
-        assert("data" in json_all)
-        stations = [extract_station_(s) for s in json_all["data"]]
+        response = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
+        assert(isinstance(response, dict))
+        assert("data" in response)
+        stations = [extract_station_(s) for s in response["data"]]
+        assert("elapsed_seconds" in response)
+        elapseds = response["elapsed_seconds"]
         return {
             "api_version": API_VERSION, 
+            "elapsed_seconds": elapseds, 
             "count" : len(stations), 
             "stations": stations
         }
@@ -60,22 +66,30 @@ class HubeauClient:
         Return {"api_version", "dates": {"lower", "upper"}} 
         """
         # TODO : 
-        return {"api_version": API_VERSION, "dates": {"lower": TEMPORARY_HIXNJ_TIME_PERIOD[0], "upper": TEMPORARY_HIXNJ_TIME_PERIOD[1]}}
+        return {
+            "api_version": API_VERSION, 
+            "elapsed_seconds": 0, 
+            "dates": {"lower": TEMPORARY_HIXNJ_TIME_PERIOD[0], "upper": TEMPORARY_HIXNJ_TIME_PERIOD[1]}
+        }
 
     def request_station_thresholds(self, station_code: str, quantity_code: str, percentiles: list[int]) -> dict: 
         """
         Return {"api_version", "thresholds": {"qnn", ... (for nn in percentiles)}}
         """
 
-        dates = self.request_station_dates(station_code=station_code, quantity_code=quantity_code)    
-        from_date = dt.date.fromisoformat(dates["dates"]["lower"])
-        to_date = dt.date.fromisoformat(dates["dates"]["upper"])
+        response = self.request_station_dates(station_code=station_code, quantity_code=quantity_code)    
+        from_date = dt.date.fromisoformat(response["dates"]["lower"])
+        to_date = dt.date.fromisoformat(response["dates"]["upper"])
         # DEBUG: print(f"****** dates: {from_date} ({type(from_date)}), {to_date} ({type(to_date)})")
         observations = self.request_station_observations(station_code=station_code, quantity_code=quantity_code, from_date=from_date, to_date=to_date)
         # DEBUG: print(f"****** observations: {type(observations)} ({len(observations)})")
         thresholds = self._compute_thresholds(observations, percentiles)
         # DEBUG: print("****** thresholds:", thresholds)
-        return {"api_version": API_VERSION, "thresholds": thresholds}
+        return {
+            "api_version": API_VERSION, 
+            "elapsed_seconds": response["elapsed_seconds"], 
+            "thresholds": thresholds
+        }
 
     def request_station_observations(self, station_code: str, quantity_code: str, from_date: dt.date, to_date: dt.date) -> dict: 
         """
@@ -106,7 +120,7 @@ class HubeauClient:
         ds2 = format_date_(to_date, True)
 
         url = f"{self.BASE_URL}/obs_elab"
-        params = {"format": "json", "size": 100}
+        params = {"format": "json", "size": PAGE_SIZE_DEFAULT}
 
         output_fields = [ "date_obs_elab" , "resultat_obs_elab" ]
 
@@ -121,13 +135,15 @@ class HubeauClient:
         params["date_debut_obs_elab"] = ds1
         params["date_fin_obs_elab"] = ds2
         params["fields"] = ",".join(output_fields)
-        json_all = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
-        assert(isinstance(json_all, dict))
-        assert("data" in json_all)
-
-        observations = [extract_observation_(o) for o in json_all["data"]]
+        response = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
+        assert(isinstance(response, dict))
+        assert("data" in response)
+        observations = [extract_observation_(o) for o in response["data"]]
+        assert("elapsed_seconds" in response)
+        elapseds = response["elapsed_seconds"]
         return {
             "api_version": API_VERSION, 
+            "elapsed_seconds": elapseds, 
             "count" : len(observations), 
             "observations": observations
         }

@@ -1,6 +1,8 @@
 import requests
 import time
 
+DEBUG = False
+
 def request_json(url, params=None, user_agent=None, timeout_in_seconds=60): # return requested json data + elapsed time in seconds or raise exception
     """
     Execute the given API point as HTTP GET request with requested JSON output and return JSON output data or raise an exception.
@@ -53,11 +55,15 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
             assert(page_count == count)
 
             page_data = json_page.get("data", [])
-            data.extend(page_data)
+            if page_data:
+                data.extend(page_data)
 
             # info:
             pages += 1
             rate = pages / duration_in_seconds
+
+            if DEBUG:
+                print(f"*** {url}: page [{pages}]: local records {len(page_data)}, total records {len(data)}/{count}, local duration: {elapsed_in_seconds}, total duration: {duration_in_seconds}, rate: {rate}, (max: {requests_per_second})")
 
             next_url = json_page.get("next")
             if next_url:
@@ -66,8 +72,13 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
 
                 # respecter les limites de l'API
                 if requests_per_second > 0:
-                    if rate > requests_per_second:
-                        time.sleep(0.3) # slow down
+                    if rate > requests_per_second:      
+                        time.sleep(0.33) # slow down
+                        if DEBUG:                  
+                            print(f"****** next : have to slow down")
+            else:
+                if DEBUG: 
+                    print(f"****** next : done")
 
-    return {"api_version": api_version, "count": count, "data": data}
+    return {"api_version": api_version, "elapsed_seconds": duration_in_seconds, "count": count, "data": data}
 
