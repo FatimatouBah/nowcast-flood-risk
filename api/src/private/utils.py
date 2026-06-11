@@ -17,7 +17,8 @@ def request_json(url, params=None, user_agent=None, timeout_in_seconds=60): # re
     output = response.json()  # content as json object (dictionary)
     return output, response.elapsed.total_seconds()
 
-@staticmethod
+DELAY_BETWEEN_PAGES = 1.0  # seconds
+
 def request_json_all(url, params=None, user_agent=None, requests_per_second=10, timeout_in_seconds=60):  # return {"api_version", "count", "data": [json-data]} or raise exception
     """
     Traverse all pages of the paginated endpoint and return a distionary containing the list of collected JSON output data.
@@ -73,7 +74,7 @@ def request_json_all(url, params=None, user_agent=None, requests_per_second=10, 
                 # respecter les limites de l'API
                 if requests_per_second > 0:
                     if rate > requests_per_second:      
-                        time.sleep(0.33) # slow down
+                        time.sleep(DELAY_BETWEEN_PAGES) # slow down
                         if DEBUG:                  
                             print(f"****** next : have to slow down")
             else:

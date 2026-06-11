@@ -7,17 +7,28 @@ import pandas as pd
 import numpy as np
 from typing import Optional
 
-TEMPORARY_HIXNJ_TIME_PERIOD = ("2007-01-01", "2026-12-31")
+DEFAULT_DATE_FORMAT = "%Y-%m-%d"   
+
+WORKING_DATES_WINDOW = ("2007-01-01", "2026-12-31")
+WORKING_DATES_WINDOW_AS_DATE_OBJECTS = (dt.date.fromisoformat(WORKING_DATES_WINDOW[0]), dt.date.fromisoformat(WORKING_DATES_WINDOW[1]))
 
 PAGE_SIZE_MAX = 20000
 PAGE_SIZE_DEFAULT = PAGE_SIZE_MAX // 2
 
+QUANTITY_CODES = ("hixnj", "qixnj", "qinnj", "qmnj", "hixm", "qixm", "qinm", "qmm")
+
 DEBUG = False
+
+def _convert_hubeau_date_to_date_object(hubeau_datetime_as_string: Optional[str]):
+    try:
+        return dt.datetime.fromisoformat(hubeau_datetime_as_string).date()
+    except:
+        return None  
 
 class HubeauClient:
 
     BASE_URL = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
-    USER_AGENT = "jedha-dsfsft41-team3-ml-flood-forecasting-app"
+    USER_AGENT = f"jedha-dsfsft41-team3-ml-flood-forecasting-api/{API_VERSION}"
 
     def request_stations(self) -> dict: 
         """
@@ -25,11 +36,37 @@ class HubeauClient:
         """
 
         # TODO : add observable_date_first, observable_date_last
-        # TODO : reject out-of-order stations
 
-        def is_station_active_(s_, observable_date_window_= TEMPORARY_HIXNJ_TIME_PERIOD):
-            active_ = s_["en_service"]  # ignore dates for now
-            return active_
+        def is_station_acceptable_(s_, working_dates_window_= WORKING_DATES_WINDOW_AS_DATE_OBJECTS):
+            # L'hypothèse de travail est que chaque station de prévision a son modèle de prédiction.
+            # Une station hors-service à l'instant présent ne devrait pas proposer de prédicteur dans le dashboard. 
+            # En conséquence, on exclut systématiquement les stations hors services, même si elles ont pu servir à entrainer les modèles de stations en aval 
+            # 
+            # Si il existe une plage temporelle de travail : on rejette les stations actives qui se sont ouvertes hors de la plage de travail
+            #
+            acceptable_ = False
+
+            active_ = s_["en_service"]
+            if active_:
+                if working_dates_window_ is None:
+                    acceptable_ = True  # pas de plage de travail -> pas de limite dand la date d'ouverture -> active is enought
+                else:
+                    opening_date_ = s_["date_ouverture_station"]
+                    opening_date_ = _convert_hubeau_date_to_date_object(opening_date_)
+                    if opening_date_ is None:
+                        if DEBUG:
+                            print(f"...... station [{s_['code_station']}]: active with null opening date: {s_['date_ouverture_station']}")
+                        acceptable_ = False
+                    else:
+                        upper_working_date = working_dates_window_[1]
+                        assert(isinstance(upper_working_date, dt.date))
+                        active_inside_dates_window_ = opening_date_ <= upper_working_date
+                        if DEBUG:
+                            print(f"...... station [{s_['code_station']}]: active with opening date inside working window")
+                        acceptable_ = active_inside_dates_window_
+            if DEBUG:
+                print(f"...... station [{s_['code_station']}]: {'accepted' if acceptable_ else 'rejected'}")
+            return acceptable_
         
         def extract_station_(s_):
             return {
@@ -48,9 +85,10 @@ class HubeauClient:
             return [station["code"] for site in sample_sites.values() for station in site["stations"]]
         
         url = f"{self.BASE_URL}/referentiel/stations"
-        params = {"format": "json", "size": PAGE_SIZE_DEFAULT}
-
-        # TODO
+        params = {
+            "format": "json", 
+            "size": PAGE_SIZE_DEFAULT
+        }
         output_fields = [ 
             "code_site" , 
             "code_station", 
@@ -66,16 +104,20 @@ class HubeauClient:
             "date_fermeture_station"]
         stations_codes = collect_sample_sites_stations_codes_(SAMPLE_SITES)
         params["code_station"] = ",".join(stations_codes)  # all the sample's stations
-        
-        # TODO :
         params["fields"] = ",".join(output_fields)
-
         response = request_json_all(url, params, user_agent=self.USER_AGENT)  # may throw on failure status
         assert(isinstance(response, dict))
         assert("etime" in response)
         etime = response["etime"]
         assert("data" in response)
-        stations = [extract_station_(s) for s in response["data"] if is_station_active_(s)]
+        data = response["data"]
+        assert(isinstance(data, list))
+
+        # TODO use dataframe instead of list
+        if DEBUG:
+            print(f"****** request_stations: raw stations ({len(data)}): {data}")
+
+        stations = [extract_station_(s) for s in data if is_station_acceptable_(s)]
         return {
             "api_version": API_VERSION, 
             "etime": etime, 
@@ -119,12 +161,14 @@ class HubeauClient:
         """
         Return {api_version, etime, count, dates: {lower, upper}, stats: {min, max, ..., q98}, observations: [{ds, yobs}]} 
         """
-            
+        
+        # TODO : limit the observations to the working dates window
+
         QUANTITY_CODE_QUALIFICATION__QUALIFIED = 20
         QUANTITY_CODE_STATUS__VALIDATED = 16  
         QUANTITY_CODE_STATUS__PREVALIDATED = 12 
 
-        DEFAULT_DATE_FORMAT = "%Y-%m-%d"   
+        QUANTITY_CODES = ("hixnj", "qixnj", "qinnj", "qmnj", "hixm", "qixm", "qinm", "qmm")
 
         def format_date_(d_, end_of_the_day_=False):
             dt_ = dt.datetime(d_.year, d_.month, d_.day, 23, 59, 59, tzinfo=dt.timezone.utc) if end_of_the_day_ else \
@@ -132,8 +176,15 @@ class HubeauClient:
             ds_ = dt_.isoformat().replace('+00:00', 'Z')
             return ds_
         
-        def is_observation_acceptable_(o_):
-            return o_["code_qualification"] == QUANTITY_CODE_QUALIFICATION__QUALIFIED and o_["code_statut"] in [QUANTITY_CODE_STATUS__VALIDATED, QUANTITY_CODE_STATUS__PREVALIDATED]
+        def is_observation_acceptable_(o_, working_dates_window_= WORKING_DATES_WINDOW_AS_DATE_OBJECTS):
+            qualified_ = o_["code_qualification"] == QUANTITY_CODE_QUALIFICATION__QUALIFIED
+            validated_ = o_["code_statut"] in [QUANTITY_CODE_STATUS__VALIDATED, QUANTITY_CODE_STATUS__PREVALIDATED]
+
+            observation_date_ = o_["date_obs_elab"]
+            observation_date_ = _convert_hubeau_date_to_date_object(observation_date_)
+            inside_window_ =  observation_date_ >= working_dates_window_[0] and observation_date_ <= working_dates_window_[1]
+
+            return qualified_ and validated_ and inside_window_
         
         def compute_observable_dates_(observations_):
             ds = pd.Series([dt.date.fromisoformat(o_["ds"]) for o_ in observations_])
@@ -224,6 +275,9 @@ class HubeauClient:
         elapseds = response["etime"]
         assert("data" in response)
         data = response["data"]
+
+        # TODO use dataframe instead of list
+
         observations = [extract_observation_(o) for o in data if is_observation_acceptable_(o)]
         dates = compute_observable_dates_(observations)
         stats = compute_observable_stats_(observations, percentiles)
@@ -235,23 +289,42 @@ class HubeauClient:
             "stats": stats, 
             "observations": observations
         }
+    
+    # request quantities explicitly:
 
-    # -----------------------------------------------------------------------------
-
-    # obsolete:
-    # @staticmethod
-    # def _compute_thresholds(observations, percentiles: list[int]) -> float:
-    #     # DEBUG: print("------ inside _compute_thresholds:")
-    #     # DEBUG: print(f"--------- observations: {type(observations)} ({len(observations)})")
-    #     assert(isinstance(observations, dict))
-    #     assert("observations" in observations.keys())
-    #     # DEBUG: print(f"--------- observations: {type(observations["observations"])} ({len(observations["observations"])})")
-    #     assert(isinstance(observations["observations"], list))
-    #     if observations["observations"]:
-    #         # DEBUG: print(f"------------ head: {type(observations["observations"][0])} ({len(observations["observations"][0])})")
-    #         assert(isinstance(observations["observations"][0], dict))
-    #         assert("yobs" in observations["observations"][0].keys())
-    #     values = [obs["yobs"] for obs in observations["observations"]]
-    #     # DEBUG: print(f"--------- values: {type(values)} ({len(values)})")
-    #     thresholds = {f"q{str(percentile)}": np.percentile(values, percentile) for percentile in percentiles}
-    #     return thresholds 
+    ## daily quantitties:
+    
+    ### height quantitties:
+    
+    def request_station_hixnj_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="hixnj", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    ### flow rate quantitties:
+    
+    def request_station_qixnj_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qixnj", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    def request_station_qinnj_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qinnj", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    def request_station_qmnj_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qmnj", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    ## monthly quantitties:
+    
+    ### height quantitties:
+    
+    def request_station_hixm_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="hixm", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    ### flow rate quantitties:
+    
+    def request_station_qixm_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qixm", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    def request_station_qinm_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qinm", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        
+    def request_station_qmm_observations(self, station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None, percentiles: Optional[list[int]] = None) -> dict: 
+       return self.request_station_observations(quantity_code="qmm", station_code=station_code, from_date=from_date, to_date=to_date, percentiles=percentiles)
+        

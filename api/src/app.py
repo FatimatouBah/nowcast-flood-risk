@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import mlflow
 import logging
 import numpy as np
@@ -22,7 +23,7 @@ from private.hubeau_client import HubeauClient
 LOGGER = logging.getLogger(__name__)
 
 API_TITLE = "Machine Learning Flood Forecasting API"
-API_FAVICON_FILEPATH = "private/favicon-16.png"
+API_FAVICON_FILEPATH = "favicon.png"
 
 # -----------------------------------------------------------------------------
 # Utilities
@@ -162,16 +163,39 @@ setattr(app, "status", False)
 async def get_favicon():
     return FileResponse(API_FAVICON_FILEPATH)
 
-@app.get("/status")
-async def get_status():
+@app.get("/ping")
+async def ping():
     """
     Get the health status of the application.
 
     Return { status }.
     """
 
-    LOGGER.info("GET /status")
+    LOGGER.info("GET /ping")
     return {"status": getattr(app, "status")}  
+
+app_stations_cache = None
+app_stations_observations_cache = None
+
+def _is_cache_outdated(cache, now):
+    APP_CACHE_TTL = 300  # 5 minutes
+    if not (isinstance(cache, dict) and ("ts" not in cache.keys())): 
+        return True
+    return now > cache["ts"] + APP_CACHE_TTL
+
+def _get_station_quantity_cache(station_code, quantity_code, inout_caches_map = None):
+    if not isinstance(inout_caches_map, dict): 
+        inout_caches_map = dict()
+    if station_code not in inout_caches_map.keys():
+        inout_caches_map[station_code] = dict()
+    station_caches = inout_caches_map[station_code]
+    if quantity_code not in station_caches.keys():
+        station_caches[quantity_code] = dict(ts=0)
+    station_quantity_cache = station_caches[quantity_code]
+    return station_quantity_cache
+
+def _get_station_hixnj_cache(station_code, inout_caches_map = None):
+    return _get_station_quantity_cache(station_code=station_code, quantity_code=QUANTITY_CODE_HIXNJ, inout_caches_map=inout_caches_map)
 
 @app.get("/stations")
 async def get_stations():
@@ -180,15 +204,18 @@ async def get_stations():
 
     Return { api_version, etime, count, stations: [ { site, code, etc. } ] }.
     """
-
     LOGGER.info("GET /stations")
     try:
-        stations = app_data_client.request_stations()
+        now = time.time()
+        if _is_cache_outdated(app_stations_cache, now):
+            app_stations_cache["data"] = app_data_client.request_stations()
+            app_stations_cache["ts"] = now
     except Exception as e:
         report_endpoint_exception(e, context="requesting stations")
     else:
-        return stations
-
+        data_cache = app_stations_cache["data"]
+        return data_cache
+    
 @app.get("/station/hixnj/dates")
 async def get_station_hixnj_dates(station_code: str):
     """
@@ -242,20 +269,32 @@ async def get_station_hixnj_observations(station_code: str, from_date: Optional[
 
     Return JSON content : { api_version, etime, count, dates, stats, observations: [ { ds, yobs } ] }.
     """
+    
+    datetypes = (dt.date, )
 
+    def is_date_inside_window_(date_, lower_date_, upper_date_):
+        return ((lower_date_ is None) or (date_ >= lower_date_)) and \
+                ((upper_date_ is None) or (date_ <= upper_date_))
+    
     LOGGER.info("GET /station/hixnj/observations")
     try:
-        observations = app_data_client.request_station_observations(
-            quantity_code=QUANTITY_CODE_HIXNJ, 
-            station_code=station_code,
-            from_date=from_date, 
-            to_date=to_date
-        )
+        now = time.time()
+        observations_cache = _get_station_hixnj_cache(station_code=station_code, inout_caches_map=app_stations_observations_cache)
+        if _is_cache_outdated(observations_cache, now):
+            observations_cache["data"] = app_data_client.request_station_hixnj_observations(station_code=station_code)  # get all observations
+            observations_cache["ts"] = now
     except Exception as e:
         context = f"requesting {QUANTITY_CODE_HIXNJ} observations for {{station: {station_code}, from_date: {from_date}, to_date: {to_date}}}"
         report_endpoint_exception(e, context=context)
     else:
-        return observations
+        data_cache = observations_cache["data"]
+        if (from_date is None and to_date is None):
+            return data_cache
+
+        assert(isinstance(from_date, datetypes) or isinstance(to_date, datetypes))
+        data_cache2 = {**data_cache}
+        data_cache2["observations"] = [obs for obs in data_cache2["observations"] if is_date_inside_window_(dt.date.fromisoformat(obs["ds"]), from_date, to_date)]
+        return data_cache2
 
 class HixnjStationPredictionFeatures(BaseModel):
     station_code: str
