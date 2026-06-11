@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 API_BASE_URL = "https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space"
 st.set_page_config(page_title="Nowcast Inondation", page_icon="💦", layout="wide")
 
-# ─── FONCTIONS API ────────────────────────────────────────────────────────────
+# ─── FONCTION API ─────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=600)
 def fetch_data(endpoint, params=None):
@@ -28,7 +28,7 @@ if data and "stations" in data:
     stations = data["stations"]
     station_map = {s["label"]: s for s in stations}
     
-    # 1. CARTE (Focus Grand Est)
+    # 1. CARTE (Focus bassin)
     st.subheader("🗺️ Carte des stations")
     lats = [s["latitude"] for s in stations]
     lons = [s["longitude"] for s in stations]
@@ -59,9 +59,11 @@ if data and "stations" in data:
         st.subheader(f"📈 Hauteur d'eau — {sel_label}")
         obs_data = fetch_data("station/hixnj/observations", {"station_code": sel_code, "from_date": start, "to_date": end})
         
-        if obs_data and "observations" in obs_data:
+        # Vérification robuste : on s'assure que les données existent et ne sont pas vides
+        if obs_data and "observations" in obs_data and len(obs_data["observations"]) > 0:
             df = pd.DataFrame(obs_data["observations"])
-            # Détection automatique des colonnes
+            
+            # S'assure que les colonnes 'ds' et 'yobs' existent, sinon prend les 2 premières
             x_col = 'ds' if 'ds' in df.columns else df.columns[0]
             y_col = 'yobs' if 'yobs' in df.columns else df.columns[1]
             
@@ -74,7 +76,7 @@ if data and "stations" in data:
                               yaxis=dict(gridcolor="#e5e5e5"))
             st.plotly_chart(fig, width='stretch')
         else:
-            st.warning("Aucune donnée disponible pour cette sélection.")
+            st.warning("Aucune donnée disponible pour cette sélection. Vérifiez la période ou la station.")
 else:
     st.error("Impossible de joindre le serveur de données.")
 
