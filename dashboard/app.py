@@ -1,5 +1,6 @@
 import requests
 from typing import Optional
+import time
 import pandas as pd
 import datetime as dt
 import streamlit as st
@@ -7,351 +8,356 @@ import plotly.graph_objects as go
 
 # ----------------------------------------------------------
 
-# # called to load the model into the global object "model" : 
-# # ```model = load_model()``` 
-# # return a model object (with 'predict' method).
-# @st.cache_resource
-# def load_model():
-#     for root, dirs, files in os.walk("mlruns"):
-#         for f in files:
-#             if f == "model.pkl":
-#                 return joblib.load(os.path.join(root, f))
-#     raise FileNotFoundError("Aucun modèle trouvé dans mlruns")
-
-# # called to load the data into the global object "dfs" : 
-# # ```dfs = load_data()```.
-# # return ???.
-# @st.cache_data
-# def load_data():
-#     possible_paths = [
-#         "hubeau",
-#         "src/fb/hubeau",
-#         "/app/hubeau",
-#         "/app/src/fb/hubeau"
-#     ]
-#     data_path = None
-#     for path in possible_paths:
-#         if os.path.exists(path):
-#             data_path = path
-#             break
-#     if data_path is None:
-#         raise FileNotFoundError("Dossier hubeau introuvable")
-#     files = [f for f in os.listdir(data_path) if f.endswith(".csv") and "obstr" in f]
-#     dfs = {}
-#     for f in sorted(files):
-#         parts = f.replace(".csv", "").split("_")
-#         station = parts[2]
-#         grandeur = parts[3]
-#         key = f"{station}_{grandeur}"
-#         df = pd.read_csv(os.path.join(data_path, f))
-#         df["date_obs"] = pd.to_datetime(df["date_obs"])
-#         df = df.sort_values("date_obs")
-#         dfs[key] = df
-#     return dfs
-
-# URL de l'API (à adapter une fois déployée sur Hugging Face)
 API_BASE_URL = "https://nicolaspichon35-dsfsft41-ml-flood-forecasting-api.hf.space"
 
-# Dans app.py, AVANT load_stations(), hors de tout cache
-def _wake_up_api():
+# wake-up the API server before calling any endpoint:
+def _wake_up_api(timeout=60, interval=1):
+    """Wait for the API Server to be ready before calling anything."""
     try:
-        requests.get(f"{API_BASE_URL}/status", timeout=60)
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                r = requests.get(f"{API_BASE_URL}/ping", timeout=10)
+                if r.status_code == 200 and r.json().get("status") is True:
+                    return True
+            except Exception:
+                pass
+            time.sleep(interval)
+        return False
     except Exception:
         pass  # Silencieux, juste pour réveiller le Space
 
-_wake_up_api()  # ligne ~190, juste avant : stations = load_stations()
+_wake_up_api()
 
-# ...
-@st.cache_data(ttl=3600)
-def load_stations():
-       
-    # TMP :
-    # stations = {
-    #     "A161003001": {"nom": "Ill à Colmar",        "lat": 48.080, "lon": 7.358, "riviere": "Ill"},
-    #     "A214010001": {"nom": "Fecht à Ostheim",     "lat": 48.166, "lon": 7.358, "riviere": "Fecht"},
-    #     "A236003001": {"nom": "Ill à Kogenheim",     "lat": 48.266, "lon": 7.533, "riviere": "Ill"},
-    #     "A348020001": {"nom": "Zorn à Waltenheim",   "lat": 48.716, "lon": 7.583, "riviere": "Zorn"},
-    # }
-
-    url = f"{API_BASE_URL}/stations"
-    response = requests.get(url)
-    response.raise_for_status()
-    content = response.json()
-    # DEBUG : print("****** content:", content)
-    assert(isinstance(content, dict))
-    assert(all(field in content.keys() for field in ["api_version", "count", "stations"]))
-    stations = content["stations"]
-    # DEBUG : print("****** stations:", stations)
-    assert(isinstance(stations, list))
-    assert((len(stations) == 0) or (isinstance(stations[0], dict) and (all(field in stations[0].keys() for field in ["code", "label", "latitude", "longitude"]))))
-    return stations
-
-# ...
-@st.cache_data(ttl=3600)
-def load_station_dates_and_stats(station_code):
-    url = f"{API_BASE_URL}/station/hixnj/stats"
-    response = requests.get(url, params={"station_code": station_code})
-    response.raise_for_status()
-    content = response.json()
-    # DEBUG : print("****** content:", content)
-    assert(isinstance(content, dict))
-    assert(all(field in content.keys() for field in ["dates", "stats"]))
-    dates = content["dates"]
-    # DEBUG : print("****** dates:", dates)
-    assert(isinstance(dates, dict))
-    assert(all(field in dates.keys() for field in ["lower", "upper"]))
-    stats = content["stats"]
-    # DEBUG : print("****** stats:", stats)
-    assert(isinstance(stats, dict))
-    assert(all(field in stats.keys() for field in ["min", "max", "q98"]))
-    return dates, stats
-
-# ...
-@st.cache_data(ttl=3600)
-def load_station_heights(station_code, from_date: Optional[str] = None, to_date: Optional[str] = None):
-    url = f"{API_BASE_URL}/station/hixnj/observations"
-    params = params={"station_code": station_code}
-    if from_date is not None:
-        params["from_date"] = from_date
-    if to_date is not None:
-        params["to_date"] = to_date
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    content = response.json()
-    # DEBUG : print("****** content:", content)
-    assert(isinstance(content, dict))
-    assert(all(field in content.keys() for field in ["api_version", "count", "observations"]))
-    observations = content["observations"]
-    # DEBUG : print("****** height observations:", observations)
-    assert(isinstance(observations, list))
-    assert((len(observations) == 0) or (isinstance(observations[0], dict) and (all(field in observations[0].keys() for field in ["ds", "yobs"]))))
-    return observations
-
-# ...
-@st.cache_data(ttl=3600)
-def predict_station_heights(station_code, from_date: str, to_date: str):
-    # X_sim = pd.DataFrame([[hauteur_sim, heure_sim, mois_sim]], columns=["resultat_obs", "hour", "month"])
-    # predictions = int(model.predict(X_sim)[0])
-
-    url = f"{API_BASE_URL}/station/hixnj/predict"
-    response = requests.post(url, json={"station_code": station_code, "from_date": from_date, "to_date": to_date})
-    response.raise_for_status()
-    content = response.json()
-    # DEBUG : print("****** content:", content)
-    assert(isinstance(content, dict))
-    assert(all(field in content.keys() for field in ["api_version", "count", "predictions"]))
-    predictions = content["predictions"]
-    # DEBUG : print("****** height predictions:", predictions)
-    assert(isinstance(predictions, list))
-    assert((len(predictions) == 0) or (isinstance(predictions[0], dict) and (all(field in predictions[0].keys() for field in ["ds", "yhat"]))))
-    return predictions
-
-# OBSOLETE :
 # @st.cache_data
-# def get_risk(station_code, date: str):
-#     predictions = predict_station_heights(station_code, date, date)
-#     prediction = predictions[-1]  # get the last obs (of 1)
-#     yhat = prediction["yhat"]
+def load_stations():
+    try:
+        url = f"{API_BASE_URL}/stations"
+        response = requests.get(url)
+        response.raise_for_status()
+    except Exception as exc:
+        st.error(f"❌ Error requesting stations at '{url}': {exc}")
+        return []
+    else:       
+        content = response.json()
+        # DEBUG : print("****** content:", content)
+        assert(isinstance(content, dict))
+        assert(all(field in content.keys() for field in ["api_version", "count", "stations"]))
+        stations = content["stations"]
+        # DEBUG : print("****** stations:", stations)
+        assert(isinstance(stations, list))
+        assert((len(stations) == 0) or (isinstance(stations[0], dict) and (all(field in stations[0].keys() for field in ["site", "code", "label", "latitude", "longitude"]))))
+        return stations
 
-#     # TODO : use thresholds[q98]
+@st.cache_data
+def load_station_dates_and_stats(station_code: str):
+    try:
+        url = f"{API_BASE_URL}/station/hixnj/stats"
+        response = requests.get(url, params={"station_code": station_code})
+        response.raise_for_status()
+    except Exception as exc:
+        st.error(f"❌ Error requesting dates and stats at '{url}' for station: '{station_code}': {exc}")
+        return {}, {}
+    else:
+        content = response.json()
+        # DEBUG : print("****** content:", content)
+        assert(isinstance(content, dict))
+        assert(all(field in content.keys() for field in ["dates", "stats"]))
+        dates = content["dates"]
+        # DEBUG : print("****** dates:", dates)
+        assert(isinstance(dates, dict))
+        assert(all(field in dates.keys() for field in ["lower", "upper"]))
+        stats = content["stats"]
+        # DEBUG : print("****** stats:", stats)
+        assert(isinstance(stats, dict))
+        assert(all(field in stats.keys() for field in ["min", "max", "q98"]))
+        return dates, stats
 
-#     # TMP :
-#     match yhat:
-#         case y if y < 2000.0:
-#             level = 1
-#         case _:
-#             level = 3
-#     return level, yhat
+@st.cache_data
+def load_station_heights(station_code: str, from_date: Optional[str] = None, to_date: Optional[str] = None):
+    try:
+        url = f"{API_BASE_URL}/station/hixnj/observations"
+        params = params={"station_code": station_code}
+        if from_date is not None:
+            params["from_date"] = from_date
+        if to_date is not None:
+            params["to_date"] = to_date
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+    except Exception as exc:
+        st.error(f"❌ Error requesting heights at '{url}' for station: '{station_code}': {exc}")
+        return []
+    else:
+        content = response.json()
+        # DEBUG : print("****** content:", content)
+        assert(isinstance(content, dict))
+        assert(all(field in content.keys() for field in ["api_version", "count", "observations"]))
+        observations = content["observations"]
+        # DEBUG : print("****** height observations:", observations)
+        assert(isinstance(observations, list))
+        assert((len(observations) == 0) or (isinstance(observations[0], dict) and (all(field in observations[0].keys() for field in ["ds", "yobs"]))))
+        return observations
 
+@st.cache_data
+def predict_station_heights(station_code, from_date: str, to_date: str):
+    try:
+        url = f"{API_BASE_URL}/station/hixnj/predict"
+        response = requests.post(url, json={"station_code": station_code, "from_date": from_date, "to_date": to_date})
+        response.raise_for_status()
+    except Exception as exc:
+        st.error(f"❌ Error predicting heights at '{url}' for station: '{station_code}': {exc}")
+        return []
+    else:
+        content = response.json()
+        # DEBUG : print("****** content:", content)
+        assert(isinstance(content, dict))
+        assert(all(field in content.keys() for field in ["api_version", "count", "predictions"]))
+        predictions = content["predictions"]
+        # DEBUG : print("****** height predictions:", predictions)
+        assert(isinstance(predictions, list))
+        assert((len(predictions) == 0) or (isinstance(predictions[0], dict) and (all(field in predictions[0].keys() for field in ["ds", "yhat"]))))
+        return predictions
 
-# ----------------------------------------------------------
+# ─── CONFIGURATION ────────────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Prévisions des Risques d'Inondation",
+    page_title="Prédiction des Crues Fluviales en France",
     page_icon="💦",
     layout="wide"
 )
 
-st.markdown("""
-<style>
-    .main { background-color: #f0f4f8; }
-    .risk-card {
-        padding: 20px;
-        border-radius: 12px;
-        text-align: center;
-        font-size: 1.5em;
-        font-weight: bold;
-        margin: 10px 0;
-    }
-    .risk-green  { background-color: #d4edda; color: #155724; border: 2px solid #28a745; }
-    .risk-yellow { background-color: #fff3cd; color: #856404; border: 2px solid #ffc107; }
-    .risk-red    { background-color: #f8d7da; color: #721c24; border: 2px solid #dc3545; }
-    h1 { color: #003189; }
-</style>
+# st.markdown("""
+# <style>
+#     .main { background-color: #f0f4f8; }
+#     .risk-card {
+#         padding: 20px;
+#         border-radius: 12px;
+#         text-align: center;
+#         font-size: 1.5em;
+#         font-weight: bold;
+#         margin: 10px 0;
+#     }
+#     .risk-green  { background-color: #d4edda; color: #155724; border: 2px solid #28a745; }
+#     .risk-yellow { background-color: #fff3cd; color: #856404; border: 2px solid #ffc107; }
+#     .risk-red    { background-color: #f8d7da; color: #721c24; border: 2px solid #dc3545; }
+#     h1 { color: #003189; }
+# </style>
+# """, unsafe_allow_html=True)
+
+# Style titre et le fond
+st.markdown("""<style> h1, h2, h3 { color: #003189; }</style>
 """, unsafe_allow_html=True)
 
-st.markdown("# Prévision des Risques de Crues Fluviales")
-st.markdown("## Bassin versant de l'Ill - Grand Est")
-st.markdown("---")
+# ─── INTERFACE ────────────────────────────────────────────────────────────────
 
-risk_colors = {1: "#28a745", 2: "#ffc107", 3: "#dc3545"}
-risk_labels = {1: "🟢 FAIBLE", 2: "🟡 MODÉRÉ", 3: "🔴 ÉLEVÉ"}
-risk_css    = {1: "risk-green", 2: "risk-yellow", 3: "risk-red"}
+st.title("💦 Prédiction des Crues Fluviales en France")
+st.markdown("**Site d'étude : bassin versant de l'Ill (Grand Est)**")
+st.markdown("---")
 
 col1, col2 = st.columns([3, 2])
 
 stations = load_stations()
+if not stations:
+    st.error(f"❌ Erreur au chargelentdes stations: aucune station n'a été trouvée")
+    st.stop()
 
-with col1:
-    st.markdown("### Carte des stations de prévision des crues")
-    noms, lats, lons, couleurs, textes = [], [], [], [], []
-    for station in stations:
-        assert(isinstance(station, dict))
-        station_site = station["site"]
-        station_code = station["code"]
-        station_label = station["label"]
-        station_latitude = station["latitude"]
-        station_longitude = station["longitude"]
+assert(len(stations) > 0)
 
-        # date = dt.date.today().strftime("%Y-%m-%d")        
-        # level, height = get_risk(station_code, date=date)
-        
-        noms.append(station_label)
-        lats.append(station_latitude)
-        lons.append(station_longitude)
-        couleurs.append(risk_colors.get(1, "#888888"))
-        textes.append(f"{station_label}<br>Site: {station_site}<br>Code: {station_code}")
+# ─── CARTE ────────────────────────────────────────────────────────────────────
+st.subheader("🗺️ Stations de prévision des crues")
+st.map(pd.DataFrame(stations), latitude="latitude", longitude="longitude", size=200, color="#02FF24")
 
-    fig_map = go.Figure(go.Scattermap(
-        lat=lats, lon=lons,
-        mode='markers+text',
-        marker=dict(size=20, color=couleurs, opacity=0.9),
-        text=noms,
-        textposition="top right",
-        hovertext=textes,
-        hoverinfo='text'
-    ))
-    fig_map.update_layout(
-        mapbox=dict(style="open-street-map", center=dict(lat=station_latitude, lon=station_longitude), zoom=32),
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=420
-    )
-    st.plotly_chart(fig_map, width='stretch')
+st.markdown("---")
 
-# with col2:
-#     st.subheader("🚨 Niveaux de vigilance")
+# with col1:
+#     st.markdown("### Carte des stations de prévision des crues")
+#     noms, lats, lons, couleurs, textes = [], [], [], [], []
 #     for station in stations:
 #         assert(isinstance(station, dict))
+#         station_site = station["site"]
 #         station_code = station["code"]
 #         station_label = station["label"]
 #         station_latitude = station["latitude"]
 #         station_longitude = station["longitude"]
+#         # date = dt.date.today().strftime("%Y-%m-%d")        
+#         # level, height = get_risk(station_code, date=date)
+#         noms.append(station_label)
+#         lats.append(station_latitude)
+#         lons.append(station_longitude)
+#         couleurs.append(risk_colors.get(1, "#888888"))
+#         textes.append(f"{station_label}<br>Site: {station_site}<br>Code: {station_code}")
+#     fig_map = go.Figure(go.Scattermap(
+#         lat=lats, lon=lons,
+#         mode='markers+text',
+#         marker=dict(size=20, color=couleurs, opacity=0.9),
+#         text=noms,
+#         textposition="top right",
+#         hovertext=textes,
+#         hoverinfo='text'
+#     ))
+#     fig_map.update_layout(
+#         mapbox=dict(style="open-street-map", center=dict(lat=station_latitude, lon=station_longitude), zoom=32),
+#         margin=dict(l=0, r=0, t=0, b=0),
+#         height=420
+#     )
+#     st.plotly_chart(fig_map, width='stretch')
 
-#         date = dt.date.today().strftime("%Y-%m-%d")        
-#         level, height = get_risk(station_code, date=date)
-#         css = risk_css.get(level, "risk-green")
-#         label = risk_labels.get(level, "N/A")
-#         st.markdown(f"""
-#         <div class='risk-card {css}'>
-#             {station_label}
-#             <br>
-#             <span style='font-size:1.2em'>{label}</span><br>
-#             <small style='font-weight:normal'>Hauteur actuelle: {height:.0f} mm</small>
-#         </div>
-#         """, unsafe_allow_html=True)
+# ─── PARAMÈTRES + GRAPHIQUE ──────────────────────────────────────────────────
 
-st.markdown("---")
-st.markdown("### Observation des hauteurs d'eau par station")
+col_params, col_graph = st.columns([1, 3])
 
-station_code_by_labels = { station["label"]: station for station in stations }
-station_labels = list(station_code_by_labels.keys())
+stations_by_names = { s["label"]: s for s in stations }
+station_names = list(stations_by_names.keys())
 
 default_station_code = "A236003001" # kogenheim
-default_station_label = [s["label"] for s in stations if s["code"] == default_station_code][0]
-default_station_label_index = [n for n, s in enumerate(station_labels) if s == default_station_label][0]
+default_station_labels = [s["label"] for s in stations if s["code"] == default_station_code]
+if (len(default_station_labels) == 0):
+    st.error(f"❌ Error with stations: cannot find default station's code ({default_station_code})")
+    st.stop()
+default_station_label = default_station_labels[0]
 
-selected_name = st.selectbox("Sélectionner une station", options=station_labels, index=default_station_label_index)
-selected_code = station_code_by_labels[selected_name]["code"]
+default_station_label_indexes = [n for n, s in enumerate(station_names) if s == default_station_label]
+if (len(default_station_label_indexes) == 0):
+    st.error(f"❌ Error with stations: cannot find default station's name (Kogenheim)")
+    st.stop()
+default_station_label_index = default_station_label_indexes[0]
 
-station_dates, station_stats = load_station_dates_and_stats(selected_code)
-station["dates"] = station_dates
-station["stats"] = station_stats
+with col_params:
+    st.subheader("⚙️ Paramètres")
+    selected_name = st.selectbox("Choisir une station", options=station_names, index=default_station_label_index)
+    selected_station = stations_by_names[selected_name]
+    selected_code = selected_station["code"]
 
-# TODO : API/station/hixnj/dates(station_code) -> dates (min,max)
+    station_dates, station_stats = load_station_dates_and_stats(selected_code)
+    selected_station["dates"] = station_dates
+    selected_station["stats"] = station_stats
 
-selected_date_1 = station_dates["lower"]
-selected_date_2 = station_dates["upper"]
+    date_min = dt.date.fromisoformat(station_dates["lower"])
+    date_max = dt.date.fromisoformat(station_dates["upper"])
 
-# TODO : API/station/hixnj/thresholds(station_code) -> thresholdstes (min,max,q98)
-selected_threshold = station_stats["q98"]
+    selected_date_1 = st.date_input("Date de la première observation", value=date_min, min_value=date_min, max_value=date_max)
+    selected_date_2 = st.date_input("Date de la dernière observation", value=date_max, min_value=date_min, max_value=date_max)
+    
+    selected_threshold = station_stats["q98"]
+    st.metric("Seuil d'alerte", f"{int(selected_threshold)} mm")
 
 quantity_label = "hauteur d'eau maximale journalière (HIXnJ)"
 quantity_legend = "HIXnJ (mm)"
 
-# key_h = f"{selected_code}_H"
-# df_plot = dfs[key_h] if key_h in dfs else None
-# if df_plot:
-#     yobs = df_plot["resultat_obs"]
-#     ds = df_plot["date_obs"]
+# ds_obs = df_obss["ds"] if "ds" in df_obss.keys() else None
+# y_obs = df_obss["yobs"] if "yobs" in df_obss.keys() else None
+with col_graph:
+    st.subheader(f"📈 Observation des hauteurs d'eau par station")
+    selected_values = load_station_heights(selected_code, selected_date_1.isoformat(), selected_date_2.isoformat())
+    df_obss = pd.DataFrame(selected_values)
+    ds_obs = pd.to_datetime(df_obss["ds"]) if not df_obss.empty and "ds" in df_obss.columns else None
+    y_obs = df_obss["yobs"] if not df_obss.empty and "yobs" in df_obss.columns else None
 
-selected_values = load_station_heights(selected_code, selected_date_1, selected_date_2)
+    fig = go.Figure()
 
-fig_ts = go.Figure()
-df_obss = pd.DataFrame(selected_values)
-# DEBUG print("****** df_obss:", df_obss)
-ds_obs = df_obss["ds"] if "ds" in df_obss.keys() else None
-y_obs = df_obss["yobs"] if "yobs" in df_obss.keys() else None
-if ds_obs is not None and y_obs is not None:
-    fig_ts.add_trace(
-        go.Scatter(
-            x=ds_obs, 
-            y=y_obs,
-            mode="lines", 
-            name=quantity_label,
+    if ds_obs is not None and y_obs is not None:
+        fig.add_trace(go.Scatter(
+            x=ds_obs, y=y_obs, mode="lines", 
+            name=quantity_label, 
             line=dict(color="#003189", width=2)
-    ))
+        ))
 
-fig_ts.add_hline(
-    y=selected_threshold, 
-    line_dash="dash", 
-    line_color="#dc3545", 
-    annotation_text="Seuil d'alerte"
-)
-fig_ts.update_layout(
-    title=f"Station de {selected_name} : {quantity_label}",
-    xaxis_title="Date",
-    yaxis_title=quantity_legend,
-    height=350,
-    # plot_bgcolor='white',
-    # paper_bgcolor='white',
-)
-st.plotly_chart(fig_ts, width='stretch')
+        # Seuil d'alerte
+        fig.add_hline(y=selected_threshold, 
+                      line_dash="dash", line_color="red", line_width=3,
+                      annotation_text="Seuil d'alerte",
+                      annotation_position="top left",
+                      annotation_font_color="white")
+
+    # Mise en forme graphique avec fond sombre pour lisibilité en présentation
+    fig.update_layout(
+        title=f"Station de {selected_name} : {quantity_label}",
+        xaxis_title="Date", yaxis_title=quantity_legend, height=500,
+        xaxis=dict(rangeslider=dict(visible=True))
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# *** 
+
+# st.markdown("### Observation des hauteurs d'eau par station")
+
+# station_code_by_labels = { station["label"]: station for station in stations }
+# station_labels = list(station_code_by_labels.keys())
+
+# default_station_code = "A236003001" # kogenheim
+# default_station_label = [s["label"] for s in stations if s["code"] == default_station_code][0]
+# default_station_label_index = [n for n, s in enumerate(station_labels) if s == default_station_label][0]
+
+# selected_name = st.selectbox("Sélectionner une station", options=station_labels, index=default_station_label_index)
+# selected_code = station_code_by_labels[selected_name]["code"]
+
+# station_dates, station_stats = load_station_dates_and_stats(selected_code)
+# station["dates"] = station_dates
+# station["stats"] = station_stats
+
+# # TODO : API/station/hixnj/dates(station_code) -> dates (min,max)
+
+# selected_date_1 = station_dates["lower"]
+# selected_date_2 = station_dates["upper"]
+
+# # TODO : API/station/hixnj/thresholds(station_code) -> thresholdstes (min,max,q98)
+# selected_threshold = station_stats["q98"]
+
+# quantity_label = "hauteur d'eau maximale journalière (HIXnJ)"
+# quantity_legend = "HIXnJ (mm)"
+
+# selected_values = load_station_heights(selected_code, selected_date_1, selected_date_2)
+
+# fig_ts = go.Figure()
+# df_obss = pd.DataFrame(selected_values)
+# # DEBUG print("****** df_obss:", df_obss)
+# ds_obs = df_obss["ds"] if "ds" in df_obss.keys() else None
+# y_obs = df_obss["yobs"] if "yobs" in df_obss.keys() else None
+# if ds_obs is not None and y_obs is not None:
+#     fig_ts.add_trace(
+#         go.Scatter(
+#             x=ds_obs, 
+#             y=y_obs,
+#             mode="lines", 
+#             name=quantity_label,
+#             line=dict(color="#003189", width=2)
+#     ))
+
+# fig_ts.add_hline(
+#     y=selected_threshold, 
+#     line_dash="dash", 
+#     line_color="#dc3545", 
+#     annotation_text="Seuil d'alerte"
+# )
+# fig_ts.update_layout(
+#     title=f"Station de {selected_name} : {quantity_label}",
+#     xaxis_title="Date",
+#     yaxis_title=quantity_legend,
+#     height=350,
+#     # plot_bgcolor='white',
+#     # paper_bgcolor='white',
+# )
+# st.plotly_chart(fig_ts, width='stretch')
+
+# *** 
 
 # --- Prédiction
 
-# st.subheader("Prédictions des hauteurs d'eau")
+PREDICTION_DAYS = 90
 
-# col3, col4, col5 = st.columns(3)
-# with col3:
-#     hauteur_sim = st.slider("Hauteur d'eau (mm)", 400, 1500, 800)
-# with col4:
-#     heure_sim = st.slider("Heure", 0, 23, 12)
-# with col5:
-#     mois_sim = st.slider("Mois", 1, 12, 6)
+prediction_label = f"Prédiction des hauteurs d'eau maximales journalières sur {PREDICTION_DAYS} jours"
 
-prediction_label = "Prédiction des hauteurs d'eau maximales journalières"
-
-default_prediction_delta = dt.timedelta(days=30)
+default_prediction_delta = dt.timedelta(days=PREDICTION_DAYS)
 
 prediction_date_1 = selected_date_1
-prediction_date_2 = "2026-06-10"
+prediction_date_2 = selected_date_2 + default_prediction_delta
 
-predictions = predict_station_heights(selected_code, prediction_date_1, prediction_date_2)
+predictions = predict_station_heights(selected_code, prediction_date_1.isoformat(), prediction_date_2.isoformat())
 
 fig_ts = go.Figure()
 df_preds = pd.DataFrame(predictions)
 # DEBUG : print("****** df_preds:", df_preds)
-ds_pred = df_preds["ds"] if "ds" in df_preds.keys() else None
+ds_pred = pd.to_datetime(df_preds["ds"]) if "ds" in df_preds.keys() else None
 # DEBUG : print("****** ds:", type(ds), len(ds))
 y_pred = df_preds["yhat"] if "yhat" in df_preds.keys() else None
 # DEBUG : print("****** yhat:", type(yhat), len(yhat))
@@ -385,7 +391,8 @@ fig_ts.update_layout(
     title=f"{prediction_label}",
     xaxis_title="Date",
     yaxis_title=quantity_legend,
-    height=350,
+    height=500,
+    xaxis=dict(rangeslider=dict(visible=True))
 )
 st.plotly_chart(fig_ts, width='stretch')
 
