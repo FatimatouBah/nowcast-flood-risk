@@ -105,8 +105,8 @@ def load_prediction_model(station_code, quantity_code):
     return HixnjStationPredictor(station_code=station_code, model=model)
 
 def fetch_station_predictor_from_cache(station_code, quantity_code):
-    if not ((station_code in app_predictors_cache.keys()) and \
-            (quantity_code in (app_predictors_cache[station_code]).keys())):
+    global app_predictors_cache
+    if not ((station_code in app_predictors_cache.keys()) and (quantity_code in (app_predictors_cache[station_code]).keys())):
         predictor = load_prediction_model(station_code, quantity_code)
         if predictor is None:
             raise ValueError(f"cannot find <{quantity_code}> prediction model for station: <{station_code}>")
@@ -129,6 +129,7 @@ def do_predict_values(predictor, from_date, to_date):
 # -----------------------------------------------------------------------------
 # App's Hub'Eau client
 # -----------------------------------------------------------------------------
+
 app_data_client = HubeauClient()
 
 # -----------------------------------------------------------------------------
@@ -174,16 +175,20 @@ async def ping():
     LOGGER.info("GET /ping")
     return {"status": getattr(app, "status")}  
 
-app_stations_cache = None
-app_stations_observations_cache = None
-
-def _is_cache_outdated(cache, now):
+def _is_ts_cache_outdated(cache, now) -> tuple[bool, dict]:
+    # DEBUG : print("...... inside _is_ts_cache_outdated: 1")
     APP_CACHE_TTL = 300  # 5 minutes
-    if not (isinstance(cache, dict) and ("ts" not in cache.keys())): 
-        return True
-    return now > cache["ts"] + APP_CACHE_TTL
+    if not isinstance(cache, dict): 
+        new_cache = dict(ts=0)
+        return True, new_cache
+    if "ts" not in cache.keys(): 
+        cache["ts"] = 0
+        return True, cache
+    assert(isinstance(cache, dict) and ("ts" in cache.keys()))
+    outdated = now > cache["ts"] + APP_CACHE_TTL
+    return outdated, cache
 
-def _get_station_quantity_cache(station_code, quantity_code, inout_caches_map = None):
+def _get_station_quantity_observations_cache(station_code, quantity_code, inout_caches_map = None):
     if not isinstance(inout_caches_map, dict): 
         inout_caches_map = dict()
     if station_code not in inout_caches_map.keys():
@@ -194,8 +199,7 @@ def _get_station_quantity_cache(station_code, quantity_code, inout_caches_map = 
     station_quantity_cache = station_caches[quantity_code]
     return station_quantity_cache
 
-def _get_station_hixnj_cache(station_code, inout_caches_map = None):
-    return _get_station_quantity_cache(station_code=station_code, quantity_code=QUANTITY_CODE_HIXNJ, inout_caches_map=inout_caches_map)
+app_stations_cache = {}
 
 @app.get("/stations")
 async def get_stations():
@@ -206,8 +210,14 @@ async def get_stations():
     """
     LOGGER.info("GET /stations")
     try:
+        global app_stations_cache
+        global app_data_client
         now = time.time()
-        if _is_cache_outdated(app_stations_cache, now):
+        # DEBUG : print("****** calling _is_ts_cache_outdated:")
+        outdated, app_stations_cache = _is_ts_cache_outdated(cache=app_stations_cache, now=now)
+        # DEBUG : print("****** _is_ts_cache_outdated called")
+        assert(isinstance(app_stations_cache, dict))
+        if outdated:
             app_stations_cache["data"] = app_data_client.request_stations()
             app_stations_cache["ts"] = now
     except Exception as e:
@@ -228,6 +238,7 @@ async def get_station_hixnj_dates(station_code: str):
 
     LOGGER.info("GET /station/hixnj/dates")
     try:
+        global app_data_client
         dates = app_data_client.request_station_dates(
             quantity_code=QUANTITY_CODE_HIXNJ,
             station_code=station_code
@@ -250,6 +261,7 @@ async def get_station_hixnj_stats(station_code: str):
 
     LOGGER.info("GET /station/hixnj/stats")
     try:
+        global app_data_client
         thresholds = app_data_client.request_station_stats(
             quantity_code=QUANTITY_CODE_HIXNJ,
             station_code=station_code
@@ -259,6 +271,8 @@ async def get_station_hixnj_stats(station_code: str):
         report_endpoint_exception(e, context=context)
     else:
         return thresholds
+
+app_stations_observations_cache = None
 
 @app.get("/station/hixnj/observations")
 async def get_station_hixnj_observations(station_code: str, from_date: Optional[dt.date] = None, to_date: Optional[dt.date] = None):
@@ -273,19 +287,25 @@ async def get_station_hixnj_observations(station_code: str, from_date: Optional[
     datetypes = (dt.date, )
 
     def is_date_inside_window_(date_, lower_date_, upper_date_):
-        return ((lower_date_ is None) or (date_ >= lower_date_)) and \
-                ((upper_date_ is None) or (date_ <= upper_date_))
-    
+        return ((lower_date_ is None) or (date_ >= lower_date_)) and ((upper_date_ is None) or (date_ <= upper_date_))
+        
+    def get_station_hixnj_observations_cache_(station_code_, inout_caches_map_):
+        return _get_station_quantity_observations_cache(station_code=station_code_, quantity_code=QUANTITY_CODE_HIXNJ, inout_caches_map=inout_caches_map_)
+
     LOGGER.info("GET /station/hixnj/observations")
     try:
+        global app_stations_observations_cache
+        global app_data_client
         now = time.time()
-        observations_cache = _get_station_hixnj_cache(station_code=station_code, inout_caches_map=app_stations_observations_cache)
-        if _is_cache_outdated(observations_cache, now):
+        observations_cache = get_station_hixnj_observations_cache_(station_code, app_stations_observations_cache)
+        outdated, observations_cache =  _is_ts_cache_outdated(cache=observations_cache, now=now)
+        assert(isinstance(observations_cache, dict))
+        if outdated:
             observations_cache["data"] = app_data_client.request_station_hixnj_observations(station_code=station_code)  # get all observations
             observations_cache["ts"] = now
-    except Exception as e:
+    except Exception as exc:
         context = f"requesting {QUANTITY_CODE_HIXNJ} observations for {{station: {station_code}, from_date: {from_date}, to_date: {to_date}}}"
-        report_endpoint_exception(e, context=context)
+        report_endpoint_exception(exc, context=context)
     else:
         data_cache = observations_cache["data"]
         if (from_date is None and to_date is None):
