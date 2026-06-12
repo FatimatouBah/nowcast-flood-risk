@@ -1,0 +1,9 @@
+# Suppression de la version fixe pour Streamlit
+streamlit>=1.35.0
+typing
+pandas>=2.0
+numpy>=1.26
+requests
+joblib
+plotly
+python-dotenv
