@@ -22,6 +22,7 @@ pyarrow
 # ML & modelling
 xgboost
 prophet
+tensorflow
 
 # Visualisation
 matplotlib
